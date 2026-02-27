@@ -7,7 +7,7 @@ import {
 export { createProjectSchema, updateProjectSchema };
 
 export const addMemberSchema = z.object({
-  userId: z.string().uuid("Invalid user ID"),
+  email: z.string().email("Invalid email address"),
   role: z.enum(["admin", "member", "viewer"]).default("member"),
 });
 

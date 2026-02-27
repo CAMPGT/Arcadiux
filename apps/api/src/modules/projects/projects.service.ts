@@ -209,20 +209,23 @@ export async function deleteProject(projectId: string) {
 }
 
 export async function addMember(projectId: string, input: AddMemberInput) {
-  // Check user exists
+  // Look up user by email
   const user = await db.query.users.findFirst({
-    where: eq(users.id, input.userId),
+    where: eq(users.email, input.email),
   });
 
   if (!user) {
-    throw Object.assign(new Error("User not found"), { statusCode: 404 });
+    throw Object.assign(
+      new Error(`No user found with email "${input.email}"`),
+      { statusCode: 404 },
+    );
   }
 
   // Check if already a member
   const existing = await db.query.projectMembers.findFirst({
     where: and(
       eq(projectMembers.projectId, projectId),
-      eq(projectMembers.userId, input.userId),
+      eq(projectMembers.userId, user.id),
     ),
   });
 
@@ -235,13 +238,13 @@ export async function addMember(projectId: string, input: AddMemberInput) {
 
   await db.insert(projectMembers).values({
     projectId,
-    userId: input.userId,
+    userId: user.id,
     role: input.role,
   });
 
   return {
     projectId,
-    userId: input.userId,
+    userId: user.id,
     role: input.role,
     user: {
       id: user.id,
