@@ -149,11 +149,16 @@ export default function BoardPage() {
     },
   });
 
-  // Auto-seleccionar el sprint activo al cargar
+  // Auto-seleccionar el sprint activo al cargar o al cambiar de proyecto
   const activeSprint = useMemo(
     () => sprintsData?.find((s) => s.status === 'active') ?? null,
     [sprintsData],
   );
+
+  // Reset filters when project changes
+  useEffect(() => {
+    clearFilters();
+  }, [projectId, clearFilters]);
 
   useEffect(() => {
     if (activeSprint && !sprintFilter) {

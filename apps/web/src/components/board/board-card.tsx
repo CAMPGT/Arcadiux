@@ -45,6 +45,9 @@ const categoryColors: Record<IssueCategory, string> = {
   nueva_funcionalidad: 'bg-emerald-100 text-emerald-700',
   soporte: 'bg-amber-100 text-amber-700',
   testeo: 'bg-sky-100 text-sky-700',
+  funcionalidad_interna: 'bg-purple-100 text-purple-700',
+  ventas: 'bg-indigo-100 text-indigo-700',
+  administracion: 'bg-orange-100 text-orange-700',
   otros: 'bg-gray-100 text-gray-700',
 };
 

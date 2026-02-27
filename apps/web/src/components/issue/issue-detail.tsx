@@ -142,7 +142,7 @@ export function IssueDetail({
     watch,
     reset,
   } = useForm<UpdateIssueInput>({
-    resolver: zodResolver(updateIssueSchema),
+    resolver: zodResolver(updateIssueSchema) as any,
   });
 
   const updateMutation = useMutation({

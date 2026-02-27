@@ -155,7 +155,7 @@ export default function BacklogPage() {
     setValue,
     reset,
   } = useForm<CreateIssueInput>({
-    resolver: zodResolver(createIssueSchema),
+    resolver: zodResolver(createIssueSchema) as any,
     defaultValues: {
       type: IssueType.STORY,
       title: '',
