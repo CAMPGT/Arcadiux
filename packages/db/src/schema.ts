@@ -59,6 +59,9 @@ export const issueCategoryEnum = pgEnum("issue_category", [
   "nueva_funcionalidad",
   "soporte",
   "testeo",
+  "funcionalidad_interna",
+  "ventas",
+  "administracion",
   "otros",
 ]);
 

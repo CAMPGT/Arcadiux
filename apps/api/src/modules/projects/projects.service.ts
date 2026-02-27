@@ -122,9 +122,12 @@ export async function listProjects(userId: string) {
   }));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getByKey(key: string) {
+  const isUuid = UUID_RE.test(key);
   const project = await db.query.projects.findFirst({
-    where: eq(projects.key, key),
+    where: isUuid ? eq(projects.id, key) : eq(projects.key, key),
     with: {
       owner: {
         columns: {

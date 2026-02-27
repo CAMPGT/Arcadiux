@@ -439,6 +439,29 @@ export default function BacklogPage() {
               </div>
             </div>
 
+            {sprintsData && sprintsData.length > 0 && (
+              <div className="space-y-2">
+                <Label>Sprint (opcional)</Label>
+                <Select
+                  onValueChange={(v) =>
+                    setValue('sprintId', v === 'none' ? undefined : v)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin sprint" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin sprint</SelectItem>
+                    {sprintsData.map((sprint) => (
+                      <SelectItem key={sprint.id} value={sprint.id}>
+                        {sprint.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {epics.length > 0 && (
               <div className="space-y-2">
                 <Label>Épica (opcional)</Label>

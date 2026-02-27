@@ -3,6 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+import type { ApiResponse, Project } from '@arcadiux/shared/types';
 import { ChevronRight, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,13 +25,34 @@ const LABEL_MAP: Record<string, string> = {
   new: 'Nuevo',
 };
 
-function buildBreadcrumbs(pathname: string): BreadcrumbItem[] {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function extractProjectId(pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean);
+  const projIdx = segments.indexOf('projects');
+  if (projIdx !== -1 && projIdx + 1 < segments.length) {
+    const candidate = segments[projIdx + 1];
+    if (UUID_RE.test(candidate)) return candidate;
+  }
+  return null;
+}
+
+function buildBreadcrumbs(
+  pathname: string,
+  projectName: string | null,
+): BreadcrumbItem[] {
   const segments = pathname.split('/').filter(Boolean);
   const breadcrumbs: BreadcrumbItem[] = [];
   let currentPath = '';
 
   for (const segment of segments) {
     currentPath += `/${segment}`;
+    if (UUID_RE.test(segment)) {
+      if (projectName) {
+        breadcrumbs.push({ label: projectName, href: currentPath });
+      }
+      continue;
+    }
     const label = LABEL_MAP[segment] ?? decodeURIComponent(segment);
     breadcrumbs.push({ label, href: currentPath });
   }
@@ -38,7 +62,23 @@ function buildBreadcrumbs(pathname: string): BreadcrumbItem[] {
 
 export function Breadcrumbs() {
   const pathname = usePathname();
-  const breadcrumbs = buildBreadcrumbs(pathname ?? '');
+  const projectId = extractProjectId(pathname ?? '');
+
+  const { data: project } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<Project>>(
+        `/api/projects/${projectId}`,
+      );
+      return res.data;
+    },
+    enabled: !!projectId,
+  });
+
+  const breadcrumbs = buildBreadcrumbs(
+    pathname ?? '',
+    project?.name ?? null,
+  );
 
   if (breadcrumbs.length === 0) return null;
 

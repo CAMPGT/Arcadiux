@@ -101,6 +101,9 @@ export const createIssueSchema = z.object({
     IssueCategory.NEW_FEATURE,
     IssueCategory.SUPPORT,
     IssueCategory.TESTING,
+    IssueCategory.INTERNAL_FEATURE,
+    IssueCategory.SALES,
+    IssueCategory.ADMINISTRATION,
     IssueCategory.OTHERS,
   ]).optional().default(IssueCategory.OTHERS),
   labels: z

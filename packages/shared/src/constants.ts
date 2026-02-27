@@ -25,6 +25,9 @@ export const IssueCategory = {
   NEW_FEATURE: 'nueva_funcionalidad',
   SUPPORT: 'soporte',
   TESTING: 'testeo',
+  INTERNAL_FEATURE: 'funcionalidad_interna',
+  SALES: 'ventas',
+  ADMINISTRATION: 'administracion',
   OTHERS: 'otros',
 } as const;
 
@@ -34,6 +37,9 @@ export const IssueCategoryLabels: Record<IssueCategory, string> = {
   [IssueCategory.NEW_FEATURE]: 'Nueva funcionalidad',
   [IssueCategory.SUPPORT]: 'Soporte',
   [IssueCategory.TESTING]: 'Testeo',
+  [IssueCategory.INTERNAL_FEATURE]: 'Funcionalidad Interna',
+  [IssueCategory.SALES]: 'Ventas',
+  [IssueCategory.ADMINISTRATION]: 'Administración',
   [IssueCategory.OTHERS]: 'Otros',
 };
 
