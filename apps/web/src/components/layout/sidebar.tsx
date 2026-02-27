@@ -17,6 +17,7 @@ import {
   LogOut,
   User,
   FolderKanban,
+  GanttChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/stores/use-sidebar';
@@ -73,6 +74,11 @@ export function Sidebar() {
           label: 'Sprints',
           href: `/projects/${projectId}/sprints`,
           icon: Timer,
+        },
+        {
+          label: 'Gantt',
+          href: `/projects/${projectId}/gantt`,
+          icon: GanttChart,
         },
         {
           label: 'Reportes',
