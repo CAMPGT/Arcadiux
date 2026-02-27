@@ -1,0 +1,27 @@
+{
+  "name": "arcadiux-agile",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:generate": "turbo run db:generate --filter=@arcadiux/db",
+    "db:migrate": "turbo run db:migrate --filter=@arcadiux/db",
+    "db:push": "turbo run db:push --filter=@arcadiux/db",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@11.9.0"
+}
