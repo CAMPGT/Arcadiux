@@ -86,11 +86,12 @@ export default function BoardPage() {
   });
 
   const { data: issues, isLoading: issuesLoading } = useQuery({
-    queryKey: ['project', projectId, 'issues'],
+    queryKey: ['project', projectId, 'issues', { sprintId: sprintFilter }],
     queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<Issue[]>>(
-        `/api/projects/${projectId}/issues`,
-      );
+      const url = sprintFilter
+        ? `/api/projects/${projectId}/issues?sprintId=${sprintFilter}`
+        : `/api/projects/${projectId}/issues`;
+      const res = await apiClient.get<ApiResponse<Issue[]>>(url);
       return res.data;
     },
     enabled: !!projectId,
@@ -190,7 +191,6 @@ export default function BoardPage() {
   const filteredIssues = useMemo(() => {
     if (!issues) return [];
     return issues.filter((issue) => {
-      if (sprintFilter && issue.sprintId !== sprintFilter) return false;
       if (assigneeFilter && issue.assigneeId !== assigneeFilter) return false;
       if (typeFilter && issue.type !== typeFilter) return false;
       if (priorityFilter && issue.priority !== priorityFilter) return false;
@@ -201,7 +201,7 @@ export default function BoardPage() {
         return false;
       return true;
     });
-  }, [issues, sprintFilter, assigneeFilter, typeFilter, priorityFilter, searchText]);
+  }, [issues, assigneeFilter, typeFilter, priorityFilter, searchText]);
 
   const sortedStatuses = useMemo(() => {
     if (!statuses) return [];
@@ -280,7 +280,7 @@ export default function BoardPage() {
 
       // Optimistic update
       queryClient.setQueryData(
-        ['project', projectId, 'issues'],
+        ['project', projectId, 'issues', { sprintId: sprintFilter }],
         (old: Issue[] | undefined) => {
           if (!old) return old;
           return old.map((i) =>
@@ -297,7 +297,7 @@ export default function BoardPage() {
         position: newPosition,
       });
     },
-    [filteredIssues, findColumnForIssue, moveIssueMutation, projectId, queryClient],
+    [filteredIssues, findColumnForIssue, moveIssueMutation, projectId, queryClient, sprintFilter],
   );
 
   return (

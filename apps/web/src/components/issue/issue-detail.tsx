@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { updateIssueSchema, type UpdateIssueInput } from '@arcadiux/shared/validators';
+import { updateIssueSchema, type UpdateIssueInput, type UpdateIssueFormData } from '@arcadiux/shared/validators';
 import { IssueType, IssueCategory, IssueCategoryLabels, PriorityLevel, STORY_POINT_OPTIONS } from '@arcadiux/shared/constants';
 import type { ApiResponse, Issue, User, WorkflowStatus, Sprint, Responsible } from '@arcadiux/shared/types';
 import { apiClient } from '@/lib/api-client';
@@ -141,8 +141,8 @@ export function IssueDetail({
     setValue,
     watch,
     reset,
-  } = useForm<UpdateIssueInput>({
-    resolver: zodResolver(updateIssueSchema) as any,
+  } = useForm<UpdateIssueFormData>({
+    resolver: zodResolver(updateIssueSchema),
   });
 
   const updateMutation = useMutation({
@@ -199,8 +199,8 @@ export function IssueDetail({
     }
   };
 
-  const onSubmit = (data: UpdateIssueInput) => {
-    updateMutation.mutate(data);
+  const onSubmit = (data: UpdateIssueFormData) => {
+    updateMutation.mutate(data as UpdateIssueInput);
   };
 
   if (isLoading || !issue) {

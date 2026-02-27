@@ -89,14 +89,14 @@ export const createIssueSchema = z.object({
     .int()
     .min(0, 'Story points must be non-negative')
     .optional(),
-  startDate: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional(),
-  ),
-  endDate: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional(),
-  ),
+  startDate: z.string()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional()),
+  endDate: z.string()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional()),
   category: z.enum([
     IssueCategory.NEW_FEATURE,
     IssueCategory.SUPPORT,
@@ -112,6 +112,7 @@ export const createIssueSchema = z.object({
 });
 
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
+export type CreateIssueFormData = z.input<typeof createIssueSchema>;
 
 export const updateIssueSchema = createIssueSchema.partial().extend({
   statusId: z.string().uuid('Invalid status ID').optional(),
@@ -119,6 +120,7 @@ export const updateIssueSchema = createIssueSchema.partial().extend({
 });
 
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
+export type UpdateIssueFormData = z.input<typeof updateIssueSchema>;
 
 export const transitionIssueSchema = z.object({
   statusId: z.string().uuid('Invalid status ID'),

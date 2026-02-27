@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createIssueSchema, type CreateIssueInput } from '@arcadiux/shared/validators';
+import { createIssueSchema, type CreateIssueInput, type CreateIssueFormData } from '@arcadiux/shared/validators';
 import { IssueType, IssueCategory, IssueCategoryLabels, PriorityLevel, STORY_POINT_OPTIONS } from '@arcadiux/shared/constants';
 import type { ApiResponse, Issue, WorkflowStatus, User, Project, Sprint, Responsible } from '@arcadiux/shared/types';
 import { apiClient } from '@/lib/api-client';
@@ -154,8 +154,8 @@ export default function BacklogPage() {
     formState: { errors },
     setValue,
     reset,
-  } = useForm<CreateIssueInput>({
-    resolver: zodResolver(createIssueSchema) as any,
+  } = useForm<CreateIssueFormData>({
+    resolver: zodResolver(createIssueSchema),
     defaultValues: {
       type: IssueType.STORY,
       title: '',
@@ -184,8 +184,8 @@ export default function BacklogPage() {
     },
   });
 
-  const onSubmit = (data: CreateIssueInput) => {
-    createIssueMutation.mutate(data);
+  const onSubmit = (data: CreateIssueFormData) => {
+    createIssueMutation.mutate(data as CreateIssueInput);
   };
 
   return (
