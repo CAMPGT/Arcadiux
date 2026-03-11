@@ -82,7 +82,7 @@ export async function projectRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      await projectService.deleteProject(request.projectId!);
+      await projectService.deleteProject(request.projectId!, request.currentUser.sub);
       return reply.send({ success: true, data: { deleted: true } });
     },
   );

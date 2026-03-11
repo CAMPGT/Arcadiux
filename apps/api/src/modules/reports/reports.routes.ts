@@ -70,4 +70,31 @@ export async function reportRoutes(app: FastifyInstance) {
       return reply.send({ success: true, data: result });
     },
   );
+
+  // GET /projects/:projectKey/reports/lifecycle
+  app.get(
+    "/:projectKey/reports/lifecycle",
+    {
+      onRequest: [app.requireRole(["admin", "member", "viewer"])],
+      schema: {
+        params: z.object({ projectKey: z.string() }),
+        querystring: z.object({
+          sprintId: z.string().uuid(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { sprintId } = request.query as { sprintId: string };
+        const result = await reportService.getLifecycleReport(
+          request.projectId!,
+          sprintId,
+        );
+        return reply.send({ success: true, data: result });
+      } catch (err) {
+        request.log.error(err, "Lifecycle report failed");
+        throw err;
+      }
+    },
+  );
 }

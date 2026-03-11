@@ -86,6 +86,8 @@ export async function attachmentRoutes(app: FastifyInstance) {
       await attachmentService.deleteAttachment(
         attachmentId,
         request.currentUser.sub,
+        request.projectId!,
+        request.memberRole!,
       );
       return reply.send({ success: true, data: { deleted: true } });
     },

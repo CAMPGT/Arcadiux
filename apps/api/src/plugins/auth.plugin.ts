@@ -38,7 +38,7 @@ async function authPluginFn(fastify: FastifyInstance) {
         const decoded = await request.jwtVerify<JwtPayload>();
         request.currentUser = decoded;
       } catch (err) {
-        reply.code(401).send({
+        return reply.code(401).send({
           success: false,
           message: "Unauthorized: invalid or expired token",
         });

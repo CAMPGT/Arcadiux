@@ -1,11 +1,12 @@
 import bcrypt from "bcrypt";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, lte } from "drizzle-orm";
 import { db } from "@arcadiux/db";
 import { users, refreshTokens } from "@arcadiux/db/schema";
 import type { FastifyInstance } from "fastify";
 import type { RegisterInput, LoginInput } from "@arcadiux/shared/validators";
 import { config } from "../../config/index.js";
 import crypto from "node:crypto";
+import { serializeDates } from "../../utils/serialize.js";
 
 const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
@@ -97,12 +98,21 @@ export async function register(
   };
 }
 
+// Dummy hash used for constant-time comparison when user doesn't exist
+const DUMMY_HASH = "$2b$12$000000000000000000000u000000000000000000000000000000";
+
 export async function login(app: FastifyInstance, input: LoginInput) {
   const user = await db.query.users.findFirst({
     where: eq(users.email, input.email),
   });
 
-  if (!user) {
+  // Always compare password to prevent timing-based user enumeration
+  const valid = await bcrypt.compare(
+    input.password,
+    user?.passwordHash ?? DUMMY_HASH,
+  );
+
+  if (!user || !valid) {
     throw Object.assign(new Error("Invalid email or password"), {
       statusCode: 401,
     });
@@ -111,14 +121,6 @@ export async function login(app: FastifyInstance, input: LoginInput) {
   if (!user.isActive) {
     throw Object.assign(new Error("Account is deactivated"), {
       statusCode: 403,
-    });
-  }
-
-  const valid = await bcrypt.compare(input.password, user.passwordHash);
-
-  if (!valid) {
-    throw Object.assign(new Error("Invalid email or password"), {
-      statusCode: 401,
     });
   }
 
@@ -160,10 +162,21 @@ export async function refresh(app: FastifyInstance, rawRefreshToken: string) {
     });
   }
 
-  // Delete the used token (rotation)
+  // Delete the used token (rotation) + purge expired tokens for this user
   await db
     .delete(refreshTokens)
-    .where(eq(refreshTokens.id, storedToken.id));
+    .where(
+      eq(refreshTokens.id, storedToken.id),
+    );
+  // Opportunistic cleanup: remove expired tokens for this user
+  await db
+    .delete(refreshTokens)
+    .where(
+      and(
+        eq(refreshTokens.userId, storedToken.userId),
+        lte(refreshTokens.expiresAt, new Date()),
+      ),
+    );
 
   const user = storedToken.user;
 
@@ -210,9 +223,5 @@ export async function getMe(userId: string) {
     throw Object.assign(new Error("User not found"), { statusCode: 404 });
   }
 
-  return {
-    ...user,
-    createdAt: user.createdAt?.toISOString() ?? null,
-    updatedAt: user.updatedAt?.toISOString() ?? null,
-  };
+  return serializeDates(user);
 }

@@ -80,7 +80,7 @@ export const createIssueSchema = z.object({
     PriorityLevel.LOW,
   ]),
   assigneeId: z.string().uuid('Invalid assignee ID').optional(),
-  responsibleId: z.string().uuid('Invalid responsible ID').optional(),
+  responsibleIds: z.array(z.string().uuid('Invalid responsible ID')).optional(),
   parentId: z.string().uuid('Invalid parent ID').optional(),
   epicId: z.string().uuid('Invalid epic ID').optional(),
   sprintId: z.string().uuid('Invalid sprint ID').nullable().optional(),

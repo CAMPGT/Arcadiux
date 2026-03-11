@@ -8,6 +8,7 @@ import type {
 import { eq, and } from "drizzle-orm";
 import { db } from "@arcadiux/db";
 import { projects, projectMembers } from "@arcadiux/db/schema";
+import { UUID_RE } from "@arcadiux/shared/constants";
 import type { ProjectRole } from "@arcadiux/shared/constants";
 
 declare module "fastify" {
@@ -44,7 +45,7 @@ async function rbacPluginFn(fastify: FastifyInstance) {
         }
 
         // Resolve project by key or UUID
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectKey);
+        const isUuid = UUID_RE.test(projectKey);
         const project = await db.query.projects.findFirst({
           where: isUuid
             ? eq(projects.id, projectKey)

@@ -1,44 +1,25 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { createIssueSchema, type CreateIssueInput, type CreateIssueFormData } from '@arcadiux/shared/validators';
-import { IssueType, IssueCategory, IssueCategoryLabels, PriorityLevel, STORY_POINT_OPTIONS } from '@arcadiux/shared/constants';
+import { useQuery } from '@tanstack/react-query';
 import type { ApiResponse, Issue, WorkflowStatus, User, Project, Sprint, Responsible } from '@arcadiux/shared/types';
 import { apiClient } from '@/lib/api-client';
 import { BacklogTable } from '@/components/backlog/backlog-table';
 import { EpicAccordion } from '@/components/backlog/epic-accordion';
+import { CreateIssueDialog } from '@/components/issue/create-issue-dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+
+const PAGE_SIZE = 50;
 
 export default function BacklogPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params?.projectId ?? '';
-  const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -51,16 +32,28 @@ export default function BacklogPage() {
     enabled: !!projectId,
   });
 
-  const { data: issues, isLoading } = useQuery({
-    queryKey: ['project', projectId, 'issues'],
+  const projectKey = project?.key ?? '';
+
+  // Use projectId (UUID) directly — RBAC plugin resolves both UUID and key,
+  // so we don't need to wait for projectKey to resolve first.
+  const { data: backlogResult, isLoading } = useQuery({
+    queryKey: ['project', projectId, 'backlog', page],
     queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<Issue[]>>(
-        `/api/projects/${projectId}/issues`,
+      const res = await apiClient.get<{
+        success: boolean;
+        data: Issue[];
+        pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
+      }>(
+        `/api/projects/${projectId}/backlog`,
+        { page, pageSize: PAGE_SIZE },
       );
-      return res.data;
+      return res;
     },
     enabled: !!projectId,
   });
+
+  const issues = backlogResult?.data ?? [];
+  const pagination = backlogResult?.pagination;
 
   const { data: statuses } = useQuery({
     queryKey: ['project', projectId, 'statuses'],
@@ -148,45 +141,8 @@ export default function BacklogPage() {
     [issues],
   );
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-    reset,
-  } = useForm<CreateIssueFormData>({
-    resolver: zodResolver(createIssueSchema),
-    defaultValues: {
-      type: IssueType.STORY,
-      title: '',
-      description: '',
-      priority: PriorityLevel.MEDIUM,
-    },
-  });
-
-  const createIssueMutation = useMutation({
-    mutationFn: async (data: CreateIssueInput) => {
-      return apiClient.post<ApiResponse<Issue>>(
-        `/api/projects/${projectId}/issues`,
-        data,
-      );
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['project', projectId, 'issues'],
-      });
-      toast.success('Issue creado exitosamente');
-      reset();
-      setCreateDialogOpen(false);
-    },
-    onError: () => {
-      toast.error('Error al crear el issue');
-    },
-  });
-
-  const onSubmit = (data: CreateIssueFormData) => {
-    createIssueMutation.mutate(data as CreateIssueInput);
-  };
+  const handlePrevPage = useCallback(() => setPage((p) => Math.max(1, p - 1)), []);
+  const handleNextPage = useCallback(() => setPage((p) => p + 1), []);
 
   return (
     <div className="space-y-6">
@@ -194,7 +150,7 @@ export default function BacklogPage() {
         <div>
           <h2 className="text-lg font-semibold">Backlog</h2>
           <p className="text-sm text-muted-foreground">
-            {issues?.length ?? 0} issues en total
+            {pagination?.totalItems ?? issues.length} issues en total
           </p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
@@ -211,18 +167,45 @@ export default function BacklogPage() {
 
         <TabsContent value="flat">
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <div className="flex items-center justify-center py-20" aria-busy="true">
+              <LoadingSpinner />
             </div>
           ) : (
-            <BacklogTable
-              issues={issues ?? []}
-              projectKey={project?.key ?? ''}
-              members={membersMap}
-              statuses={statusesMap}
-              sprints={sprintsMap}
-              responsibles={responsiblesMap}
-            />
+            <>
+              <BacklogTable
+                issues={issues ?? []}
+                projectKey={projectKey}
+                members={membersMap}
+                statuses={statusesMap}
+                sprints={sprintsMap}
+                responsibles={responsiblesMap}
+              />
+              {pagination && pagination.totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 py-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePrevPage}
+                    disabled={page <= 1}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Página {page} de {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNextPage}
+                    disabled={page >= pagination.totalPages}
+                  >
+                    Siguiente
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -236,7 +219,7 @@ export default function BacklogPage() {
                 key={epic.id}
                 epic={epic}
                 children={children}
-                projectKey={project?.key ?? ''}
+                projectKey={projectKey}
                 members={membersMap}
                 statuses={statusesMap}
               />
@@ -254,7 +237,7 @@ export default function BacklogPage() {
                 </h3>
                 <BacklogTable
                   issues={orphans}
-                  projectKey={project?.key ?? ''}
+                  projectKey={projectKey}
                   members={membersMap}
                   statuses={statusesMap}
                   sprints={sprintsMap}
@@ -266,246 +249,15 @@ export default function BacklogPage() {
       </Tabs>
 
       {/* Create Issue Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Crear Issue</DialogTitle>
-            <DialogDescription>
-              Agrega un nuevo issue al backlog.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <Select
-                  defaultValue={IssueType.STORY}
-                  onValueChange={(v) =>
-                    setValue('type', v as CreateIssueInput['type'])
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.values(IssueType).map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Prioridad</Label>
-                <Select
-                  defaultValue={PriorityLevel.MEDIUM}
-                  onValueChange={(v) =>
-                    setValue('priority', v as CreateIssueInput['priority'])
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.values(PriorityLevel).map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p.charAt(0).toUpperCase() + p.slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Título</Label>
-              <Input
-                placeholder="Título del issue"
-                {...register('title')}
-              />
-              {errors.title && (
-                <p className="text-xs text-destructive">
-                  {errors.title.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Descripción (opcional)</Label>
-              <Textarea
-                placeholder="Describe el issue..."
-                rows={4}
-                {...register('description')}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Asignado</Label>
-                <Select
-                  onValueChange={(v) =>
-                    setValue('assigneeId', v === 'none' ? undefined : v)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin asignar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin asignar</SelectItem>
-                    {membersData?.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
-                        {member.fullName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Responsable</Label>
-                <Select
-                  onValueChange={(v) =>
-                    setValue('responsibleId', v === 'none' ? undefined : v)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin responsable" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin responsable</SelectItem>
-                    {responsiblesData?.map((resp) => (
-                      <SelectItem key={resp.id} value={resp.id}>
-                        {resp.fullName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Puntos de Historia</Label>
-                <Select
-                  onValueChange={(v) =>
-                    setValue(
-                      'storyPoints',
-                      v === 'none' ? undefined : Number(v),
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Ninguno" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ninguno</SelectItem>
-                    {STORY_POINT_OPTIONS.map((sp) => (
-                      <SelectItem key={sp} value={String(sp)}>
-                        {sp}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Categoría</Label>
-              <Select
-                defaultValue={IssueCategory.OTHERS}
-                onValueChange={(v) =>
-                  setValue('category', v as CreateIssueInput['category'])
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.values(IssueCategory).map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {IssueCategoryLabels[cat]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fecha de Inicio</Label>
-                <Input type="date" {...register('startDate')} />
-              </div>
-              <div className="space-y-2">
-                <Label>Fecha Final</Label>
-                <Input type="date" {...register('endDate')} />
-              </div>
-            </div>
-
-            {sprintsData && sprintsData.length > 0 && (
-              <div className="space-y-2">
-                <Label>Sprint (opcional)</Label>
-                <Select
-                  onValueChange={(v) =>
-                    setValue('sprintId', v === 'none' ? undefined : v)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin sprint" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin sprint</SelectItem>
-                    {sprintsData.map((sprint) => (
-                      <SelectItem key={sprint.id} value={sprint.id}>
-                        {sprint.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {epics.length > 0 && (
-              <div className="space-y-2">
-                <Label>Épica (opcional)</Label>
-                <Select
-                  onValueChange={(v) =>
-                    setValue('epicId', v === 'none' ? undefined : v)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin épica" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin épica</SelectItem>
-                    {epics.map((epic) => (
-                      <SelectItem key={epic.id} value={epic.id}>
-                        {epic.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateDialogOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={createIssueMutation.isPending}
-              >
-                {createIssueMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Crear
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CreateIssueDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        projectId={projectId}
+        members={membersData}
+        responsibles={responsiblesData}
+        sprints={sprintsData}
+        epics={epics}
+      />
     </div>
   );
 }

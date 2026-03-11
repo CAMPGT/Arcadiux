@@ -13,11 +13,16 @@ export async function backlogRoutes(app: FastifyInstance) {
       onRequest: [app.requireRole(["admin", "member", "viewer"])],
       schema: {
         params: z.object({ projectKey: z.string() }),
+        querystring: z.object({
+          page: z.coerce.number().int().positive().optional().default(1),
+          pageSize: z.coerce.number().int().min(1).max(100).optional().default(50),
+        }),
       },
     },
     async (request, reply) => {
-      const result = await backlogService.getBacklog(request.projectId!);
-      return reply.send({ success: true, data: result });
+      const { page, pageSize } = request.query as { page: number; pageSize: number };
+      const result = await backlogService.getBacklog(request.projectId!, page, pageSize);
+      return reply.send({ success: true, ...result });
     },
   );
 

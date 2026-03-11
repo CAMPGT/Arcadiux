@@ -72,8 +72,8 @@ export interface Sprint {
   name: string;
   goal: string | null;
   status: SprintStatus;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,11 +87,11 @@ export interface Issue {
   type: IssueType;
   title: string;
   description: string | null;
-  statusId: string;
+  statusId: string | null;
   priority: PriorityLevel;
   assigneeId: string | null;
-  responsibleId: string | null;
-  reporterId: string;
+  responsibleIds: string[];
+  reporterId: string | null;
   parentId: string | null;
   epicId: string | null;
   sprintId: string | null;
@@ -136,7 +136,7 @@ export interface IssueLabel {
 export interface Comment {
   id: string;
   issueId: string;
-  authorId: string;
+  authorId: string | null;
   body: string;
   createdAt: string;
   updatedAt: string;
@@ -147,7 +147,7 @@ export interface Comment {
 export interface Attachment {
   id: string;
   issueId: string;
-  uploadedBy: string;
+  uploadedBy: string | null;
   fileName: string;
   fileUrl: string;
   fileSize: number;
@@ -160,7 +160,7 @@ export interface Attachment {
 export interface ActivityLog {
   id: string;
   issueId: string;
-  userId: string;
+  userId: string | null;
   action: string;
   fieldName: string | null;
   oldValue: string | null;
@@ -172,7 +172,7 @@ export interface ActivityLog {
 
 export interface RetroBoard {
   id: string;
-  sprintId: string;
+  sprintId: string | null;
   projectId: string;
   name: string;
   template: RetroTemplate;
@@ -199,7 +199,7 @@ export interface RetroColumn {
 export interface RetroNote {
   id: string;
   columnId: string;
-  authorId: string;
+  authorId: string | null;
   text: string;
   color: string | null;
   position: number;
@@ -224,6 +224,40 @@ export interface RetroActionItem {
   assigneeId: string | null;
   issueId: string | null;
   isDone: boolean;
+}
+
+// ─── Lifecycle Report ────────────────────────────────────────────────────────
+
+export interface StatusDuration {
+  statusId: string;
+  statusName: string;
+  category: string;
+  totalMs: number;
+  formatted: string; // "2d 3h", "45m", etc.
+}
+
+export interface IssueLifecycle {
+  issueId: string;
+  issueKey: string;
+  title: string;
+  type: string;
+  currentStatus: string;
+  durations: StatusDuration[];
+  totalMs: number;
+  totalFormatted: string;
+}
+
+export interface LifecycleStatus {
+  statusId: string;
+  statusName: string;
+  category: string;
+  position: number;
+}
+
+export interface LifecycleReport {
+  sprintName: string;
+  statuses: LifecycleStatus[];
+  issues: IssueLifecycle[];
 }
 
 // ─── API Response Types ──────────────────────────────────────────────────────

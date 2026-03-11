@@ -6,7 +6,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { WorkflowStatus, Issue, User, Responsible } from '@arcadiux/shared/types';
+import type { WorkflowStatus, Issue, User, Responsible, Sprint } from '@arcadiux/shared/types';
 import { cn } from '@/lib/utils';
 import { WipBadge } from './wip-badge';
 import { BoardCard } from './board-card';
@@ -19,6 +19,8 @@ interface BoardColumnProps {
   projectKey: string;
   members: Record<string, User>;
   responsibles?: Record<string, Responsible>;
+  moveTargetSprints?: Sprint[];
+  onMoveSprint?: (issueId: string, sprintId: string) => void;
   onAddIssue?: (statusId: string) => void;
 }
 
@@ -28,6 +30,8 @@ export function BoardColumn({
   projectKey,
   members,
   responsibles,
+  moveTargetSprints,
+  onMoveSprint,
   onAddIssue,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
@@ -59,6 +63,7 @@ export function BoardColumn({
             size="icon"
             className="h-6 w-6"
             onClick={() => onAddIssue(status.id)}
+            aria-label={`Agregar issue a ${status.name}`}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -69,7 +74,7 @@ export function BoardColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          'flex flex-1 flex-col gap-2 overflow-y-auto p-2 pt-0 min-h-[80px] rounded-b-lg transition-colors',
+          'flex flex-1 flex-col gap-2 p-2 pt-0 min-h-[80px] rounded-b-lg transition-colors',
           isOver && 'bg-primary/10',
         )}
       >
@@ -83,7 +88,12 @@ export function BoardColumn({
               issue={issue}
               projectKey={projectKey}
               assignee={issue.assigneeId ? members[issue.assigneeId] : null}
-              responsibleName={issue.responsibleId && responsibles?.[issue.responsibleId]?.fullName}
+              responsibleNames={issue.responsibleIds
+                ?.map((id) => responsibles?.[id]?.fullName)
+                .filter(Boolean) as string[] | undefined}
+              statusCategory={status.category}
+              moveTargetSprints={moveTargetSprints?.filter((s) => s.id !== issue.sprintId)}
+              onMoveSprint={onMoveSprint}
             />
           ))}
         </SortableContext>

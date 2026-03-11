@@ -1,6 +1,5 @@
-import { sql, eq, and } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@arcadiux/db";
-import { issues, projects } from "@arcadiux/db/schema";
 
 export interface SearchResult {
   id: string;
@@ -20,6 +19,10 @@ export async function fullTextSearch(
   userId?: string,
   limit: number = 50,
 ): Promise<SearchResult[]> {
+  if (!userId) {
+    return [];
+  }
+
   // Sanitize query for tsquery — replace special chars, add :* for prefix matching
   const sanitized = query
     .replace(/[^\w\s]/g, " ")
@@ -33,16 +36,16 @@ export async function fullTextSearch(
     return [];
   }
 
-  const conditions = [];
+  const conditions = [
+    sql`to_tsvector('english', COALESCE(i.title, '') || ' ' || COALESCE(i.description, ''))
+        @@ to_tsquery('english', ${sanitized})`,
+  ];
 
   if (projectKey) {
     conditions.push(sql`p."key" = ${projectKey}`);
   }
 
-  const whereClause =
-    conditions.length > 0
-      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
-      : sql``;
+  const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
 
   const results = await db.execute(sql`
     SELECT
@@ -60,9 +63,8 @@ export async function fullTextSearch(
       ) AS rank
     FROM issues i
     JOIN projects p ON p.id = i.project_id
+    JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ${userId}
     ${whereClause}
-    AND to_tsvector('english', COALESCE(i.title, '') || ' ' || COALESCE(i.description, ''))
-        @@ to_tsquery('english', ${sanitized})
     ORDER BY rank DESC
     LIMIT ${limit}
   `);

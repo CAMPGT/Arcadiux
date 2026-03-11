@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginInput } from '@arcadiux/shared/validators';
-import type { ApiResponse, AuthTokens, User } from '@arcadiux/shared/types';
+import type { ApiResponse, User } from '@arcadiux/shared/types';
 import { apiClient, setTokens } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,10 +34,10 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     try {
       const response = await apiClient.post<
-        ApiResponse<{ user: User; accessToken: string; refreshToken: string }>
+        ApiResponse<{ user: User; accessToken: string }>
       >('/api/auth/login', data);
 
-      setTokens(response.data.accessToken, response.data.refreshToken);
+      setTokens(response.data.accessToken);
       toast.success(`Bienvenido de nuevo, ${response.data.user.fullName}!`);
       router.push('/projects');
     } catch (error) {

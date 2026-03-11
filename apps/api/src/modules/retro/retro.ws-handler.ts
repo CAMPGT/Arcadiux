@@ -1,4 +1,7 @@
 import type { Server as SocketIOServer, Socket } from "socket.io";
+import { eq, and } from "drizzle-orm";
+import { db } from "@arcadiux/db";
+import { retroBoards, projectMembers } from "@arcadiux/db/schema";
 import * as retroService from "./retro.service.js";
 import type { CreateRetroNoteInput, UpdateRetroNoteInput } from "@arcadiux/shared/validators";
 
@@ -10,6 +13,25 @@ interface AuthenticatedSocket extends Socket {
   };
 }
 
+async function verifyBoardMembership(
+  boardId: string,
+  userId: string,
+): Promise<boolean> {
+  const board = await db.query.retroBoards.findFirst({
+    where: eq(retroBoards.id, boardId),
+    columns: { projectId: true },
+  });
+  if (!board) return false;
+
+  const membership = await db.query.projectMembers.findFirst({
+    where: and(
+      eq(projectMembers.projectId, board.projectId),
+      eq(projectMembers.userId, userId),
+    ),
+  });
+  return !!membership;
+}
+
 export function registerRetroHandlers(
   io: SocketIOServer,
   socket: AuthenticatedSocket,
@@ -19,6 +41,13 @@ export function registerRetroHandlers(
 
   // retro:join - Join a retro board room
   socket.on("retro:join", async (data: { boardId: string }) => {
+    // Verify the user is a member of the project that owns this board
+    const hasAccess = await verifyBoardMembership(data.boardId, userId);
+    if (!hasAccess) {
+      socket.emit("retro:error", { message: "Not authorized to access this board" });
+      return;
+    }
+
     const room = `retro:${data.boardId}`;
     await socket.join(room);
 
@@ -29,17 +58,10 @@ export function registerRetroHandlers(
       boardId: data.boardId,
     });
 
-    // Send current board state to the joining user
-    try {
-      // We pass projectId as empty since getRetro will find the board by ID
-      // The board ID is sufficient for fetching
-      socket.emit("retro:joined", {
-        boardId: data.boardId,
-        userId,
-      });
-    } catch (err) {
-      socket.emit("retro:error", { message: "Failed to join retro board" });
-    }
+    socket.emit("retro:joined", {
+      boardId: data.boardId,
+      userId,
+    });
   });
 
   // retro:leave

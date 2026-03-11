@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Send, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface CommentWithAuthor extends Comment {
   author?: {
@@ -85,8 +86,8 @@ export function CommentThread({ issueId, projectId }: CommentThreadProps) {
 
       {/* Comment List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-4">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-4" aria-busy="true">
+          <LoadingSpinner size="sm" />
         </div>
       ) : comments && comments.length > 0 ? (
         <div className="space-y-4">
@@ -124,6 +125,7 @@ export function CommentThread({ issueId, projectId }: CommentThreadProps) {
         <Textarea
           placeholder="Escribe un comentario..."
           rows={3}
+          aria-label="Escribe un comentario"
           {...register('body')}
         />
         {errors.body && (

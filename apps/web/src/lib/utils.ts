@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import type { PriorityLevel, IssueType, StatusCategory } from '@arcadiux/shared/constants';
 
 export function cn(...inputs: ClassValue[]) {
@@ -8,7 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(date: string | Date, formatStr: string = 'MMM d, yyyy'): string {
-  return format(new Date(date), formatStr);
+  // Use parseISO for date strings to avoid timezone shift.
+  // new Date("2026-02-22") is parsed as UTC midnight, which shifts to the
+  // previous day in timezones behind UTC. parseISO treats it as local midnight.
+  const d = typeof date === 'string' ? parseISO(date) : date;
+  return format(d, formatStr);
 }
 
 export function formatRelativeDate(date: string | Date): string {
@@ -42,9 +46,9 @@ export function getIssueTypeColor(type: IssueType): string {
 
 export function getStatusCategoryColor(category: StatusCategory): string {
   const colors: Record<StatusCategory, string> = {
-    todo: 'text-gray-600 bg-gray-100 border-gray-300',
-    in_progress: 'text-blue-600 bg-blue-50 border-blue-200',
-    done: 'text-green-600 bg-green-50 border-green-200',
+    todo: 'text-gray-600 bg-gray-100 border-gray-300 dark:text-gray-400 dark:bg-gray-800 dark:border-gray-700',
+    in_progress: 'text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-900/30 dark:border-blue-800',
+    done: 'text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-900/30 dark:border-green-800',
   };
   return colors[category];
 }

@@ -1,4 +1,4 @@
-import { eq, and, sql, ne } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@arcadiux/db";
 import {
   sprints,
@@ -9,14 +9,7 @@ import type {
   CreateSprintInput,
   UpdateSprintInput,
 } from "@arcadiux/shared/validators";
-
-function serializeSprint(sprint: any) {
-  return {
-    ...sprint,
-    createdAt: sprint.createdAt?.toISOString?.() ?? sprint.createdAt ?? null,
-    updatedAt: sprint.updatedAt?.toISOString?.() ?? sprint.updatedAt ?? null,
-  };
-}
+import { serializeDates } from "../../utils/serialize.js";
 
 export async function createSprint(
   projectId: string,
@@ -34,7 +27,7 @@ export async function createSprint(
     })
     .returning();
 
-  return serializeSprint(sprint);
+  return serializeDates(sprint);
 }
 
 export async function listSprints(projectId: string) {
@@ -57,7 +50,7 @@ export async function listSprints(projectId: string) {
     },
   });
 
-  return result.map(serializeSprint);
+  return result.map(serializeDates);
 }
 
 export async function getSprint(projectId: string, sprintId: string) {
@@ -79,7 +72,7 @@ export async function getSprint(projectId: string, sprintId: string) {
     throw Object.assign(new Error("Sprint not found"), { statusCode: 404 });
   }
 
-  return serializeSprint(sprint);
+  return serializeDates(sprint);
 }
 
 export async function updateSprint(
@@ -114,7 +107,7 @@ export async function updateSprint(
     .where(eq(sprints.id, sprintId))
     .returning();
 
-  return serializeSprint(updated);
+  return serializeDates(updated);
 }
 
 export async function deleteSprint(projectId: string, sprintId: string) {
@@ -187,7 +180,7 @@ export async function startSprint(projectId: string, sprintId: string) {
     .where(eq(sprints.id, sprintId))
     .returning();
 
-  return serializeSprint(updated);
+  return serializeDates(updated);
 }
 
 export async function completeSprint(
@@ -229,16 +222,15 @@ export async function completeSprint(
     (issue) => !issue.statusId || !doneStatusIds.includes(issue.statusId),
   );
 
-  // Move incomplete issues to the next sprint or back to backlog
+  // Batch-move incomplete issues to the next sprint or back to backlog
   if (incompleteIssues.length > 0) {
     const targetSprintId = moveToSprintId ?? null;
+    const incompleteIds = incompleteIssues.map((i) => i.id);
 
-    for (const issue of incompleteIssues) {
-      await db
-        .update(issues)
-        .set({ sprintId: targetSprintId, updatedAt: new Date() })
-        .where(eq(issues.id, issue.id));
-    }
+    await db
+      .update(issues)
+      .set({ sprintId: targetSprintId, updatedAt: new Date() })
+      .where(inArray(issues.id, incompleteIds));
   }
 
   // Mark sprint as completed
@@ -253,7 +245,7 @@ export async function completeSprint(
     .returning();
 
   return {
-    sprint: serializeSprint(updated),
+    sprint: serializeDates(updated),
     completedIssues: sprintIssues.length - incompleteIssues.length,
     movedIssues: incompleteIssues.length,
     movedToSprintId: moveToSprintId ?? null,

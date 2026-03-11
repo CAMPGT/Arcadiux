@@ -1,8 +1,9 @@
 import { db } from "@arcadiux/db";
 import { activityLog } from "@arcadiux/db/schema";
 import { eventEmitter, type AppEvents } from "./emitter.js";
+import type { FastifyBaseLogger } from "fastify";
 
-export function setupEventHandlers(): void {
+export function setupEventHandlers(logger: FastifyBaseLogger): void {
   // Issue created
   eventEmitter.on("issue.created", async (data) => {
     try {
@@ -15,7 +16,7 @@ export function setupEventHandlers(): void {
         newValue: null,
       });
     } catch (err) {
-      console.error("Failed to log issue.created activity:", err);
+      logger.error(err, "Failed to log issue.created activity");
     }
   });
 
@@ -31,7 +32,7 @@ export function setupEventHandlers(): void {
         newValue: data.newValue,
       });
     } catch (err) {
-      console.error("Failed to log issue.updated activity:", err);
+      logger.error(err, "Failed to log issue.updated activity");
     }
   });
 
@@ -47,20 +48,19 @@ export function setupEventHandlers(): void {
         newValue: data.toStatusId,
       });
     } catch (err) {
-      console.error("Failed to log issue.transitioned activity:", err);
+      logger.error(err, "Failed to log issue.transitioned activity");
     }
   });
 
   // Issue deleted
   eventEmitter.on("issue.deleted", async (data) => {
-    // We cannot write to activity_log after the issue is deleted due to FK constraint
-    // This event is for any other side effects (e.g., notifications)
     try {
-      console.info(
-        `Issue ${data.issueId} deleted by user ${data.userId} in project ${data.projectId}`,
+      logger.info(
+        { issueId: data.issueId, userId: data.userId, projectId: data.projectId },
+        "Issue deleted",
       );
     } catch (err) {
-      console.error("Failed to handle issue.deleted:", err);
+      logger.error(err, "Failed to handle issue.deleted");
     }
   });
 
@@ -76,7 +76,7 @@ export function setupEventHandlers(): void {
         newValue: data.commentId,
       });
     } catch (err) {
-      console.error("Failed to log comment.created activity:", err);
+      logger.error(err, "Failed to log comment.created activity");
     }
   });
 
@@ -92,7 +92,7 @@ export function setupEventHandlers(): void {
         newValue: data.commentId,
       });
     } catch (err) {
-      console.error("Failed to log comment.updated activity:", err);
+      logger.error(err, "Failed to log comment.updated activity");
     }
   });
 
@@ -108,29 +108,31 @@ export function setupEventHandlers(): void {
         newValue: null,
       });
     } catch (err) {
-      console.error("Failed to log comment.deleted activity:", err);
+      logger.error(err, "Failed to log comment.deleted activity");
     }
   });
 
   // Sprint started
   eventEmitter.on("sprint.started", async (data) => {
     try {
-      console.info(
-        `Sprint ${data.sprintId} started by user ${data.userId} in project ${data.projectId}`,
+      logger.info(
+        { sprintId: data.sprintId, userId: data.userId, projectId: data.projectId },
+        "Sprint started",
       );
     } catch (err) {
-      console.error("Failed to handle sprint.started:", err);
+      logger.error(err, "Failed to handle sprint.started");
     }
   });
 
   // Sprint completed
   eventEmitter.on("sprint.completed", async (data) => {
     try {
-      console.info(
-        `Sprint ${data.sprintId} completed by user ${data.userId} in project ${data.projectId}`,
+      logger.info(
+        { sprintId: data.sprintId, userId: data.userId, projectId: data.projectId },
+        "Sprint completed",
       );
     } catch (err) {
-      console.error("Failed to handle sprint.completed:", err);
+      logger.error(err, "Failed to handle sprint.completed");
     }
   });
 }

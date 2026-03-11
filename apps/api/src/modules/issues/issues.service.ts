@@ -4,8 +4,8 @@ import {
   issues,
   sprints,
   workflowStatuses,
-  workflowTransitions,
   issueLabels,
+  issueResponsibles,
   projects,
 } from "@arcadiux/db/schema";
 import type {
@@ -13,15 +13,42 @@ import type {
   UpdateIssueInput,
   TransitionIssueInput,
 } from "@arcadiux/shared/validators";
+import { UUID_RE } from "@arcadiux/shared/constants";
 import type { IssueListQuery } from "./issues.schemas.js";
 import { eventEmitter } from "../../events/emitter.js";
+import { serializeDates } from "../../utils/serialize.js";
 
-function serializeIssue(issue: any) {
-  return {
-    ...issue,
-    createdAt: issue.createdAt?.toISOString?.() ?? issue.createdAt ?? null,
-    updatedAt: issue.updatedAt?.toISOString?.() ?? issue.updatedAt ?? null,
-  };
+async function enforceWipLimit(projectId: string, statusId: string) {
+  // Use a transaction with row-level lock to prevent race conditions
+  await db.transaction(async (tx) => {
+    // Lock the status row to serialize concurrent WIP checks
+    const [targetStatus] = await tx.execute(sql`
+      SELECT id, name, wip_limit
+      FROM workflow_statuses
+      WHERE id = ${statusId}
+      FOR UPDATE
+    `);
+
+    const wipLimit = Number((targetStatus as any)?.wip_limit ?? 0);
+    if (!wipLimit) return;
+
+    const [countResult] = await tx.execute(sql`
+      SELECT COUNT(*) as count
+      FROM issues
+      WHERE project_id = ${projectId} AND status_id = ${statusId}
+    `);
+
+    const currentCount = Number((countResult as any)?.count ?? 0);
+
+    if (currentCount >= wipLimit) {
+      throw Object.assign(
+        new Error(
+          `WIP limit reached for status "${(targetStatus as any)?.name}" (max: ${wipLimit})`,
+        ),
+        { statusCode: 400 },
+      );
+    }
+  });
 }
 
 export async function createIssue(
@@ -88,7 +115,6 @@ export async function createIssue(
         statusId: defaultStatus.id,
         priority: input.priority,
         assigneeId: input.assigneeId ?? null,
-        responsibleId: input.responsibleId ?? null,
         reporterId,
         parentId: input.parentId ?? null,
         epicId: input.epicId ?? null,
@@ -111,13 +137,23 @@ export async function createIssue(
       );
     }
 
+    // Handle responsibles
+    if (input.responsibleIds && input.responsibleIds.length > 0) {
+      await tx.insert(issueResponsibles).values(
+        input.responsibleIds.map((responsibleId) => ({
+          issueId: issue.id,
+          responsibleId,
+        })),
+      );
+    }
+
     eventEmitter.emit("issue.created", {
       issueId: issue.id,
       userId: reporterId,
       projectId,
     });
 
-    return serializeIssue(issue);
+    return serializeDates(issue);
   });
 }
 
@@ -150,38 +186,45 @@ export async function listIssues(
   }
 
   const where = and(...conditions);
+  const offset = (query.page - 1) * query.pageSize;
 
-  // Count total
-  const countResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(issues)
-    .where(where);
+  // Run count and data queries in parallel
+  const [countResult, results] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(issues)
+      .where(where),
+    db.query.issues.findMany({
+      where,
+      with: {
+        status: true,
+        assignee: {
+          columns: { id: true, email: true, fullName: true, avatarUrl: true },
+        },
+        reporter: {
+          columns: { id: true, email: true, fullName: true, avatarUrl: true },
+        },
+        issueLabels: {
+          with: { label: true },
+        },
+        issueResponsibles: {
+          with: { responsible: true },
+        },
+      },
+      orderBy: (i, { asc }) => [asc(i.position)],
+      limit: query.pageSize,
+      offset,
+    }),
+  ]);
 
   const totalItems = Number(countResult[0].count);
   const totalPages = Math.ceil(totalItems / query.pageSize);
-  const offset = (query.page - 1) * query.pageSize;
-
-  const results = await db.query.issues.findMany({
-    where,
-    with: {
-      status: true,
-      assignee: {
-        columns: { id: true, email: true, fullName: true, avatarUrl: true },
-      },
-      reporter: {
-        columns: { id: true, email: true, fullName: true, avatarUrl: true },
-      },
-      issueLabels: {
-        with: { label: true },
-      },
-    },
-    orderBy: (i, { asc }) => [asc(i.position)],
-    limit: query.pageSize,
-    offset,
-  });
 
   return {
-    data: results.map(serializeIssue),
+    data: results.map((r) => ({
+      ...serializeDates(r),
+      responsibleIds: r.issueResponsibles.map((ir) => ir.responsibleId),
+    })),
     pagination: {
       page: query.page,
       pageSize: query.pageSize,
@@ -191,7 +234,6 @@ export async function listIssues(
   };
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function resolveIssueWhere(projectId: string, identifier: string) {
   if (UUID_RE.test(identifier)) {
@@ -228,6 +270,9 @@ export async function getByIdentifier(projectId: string, identifier: string) {
       issueLabels: {
         with: { label: true },
       },
+      issueResponsibles: {
+        with: { responsible: true },
+      },
       comments: {
         with: {
           author: {
@@ -243,7 +288,10 @@ export async function getByIdentifier(projectId: string, identifier: string) {
     throw Object.assign(new Error("Issue not found"), { statusCode: 404 });
   }
 
-  return serializeIssue(issue);
+  return {
+    ...serializeDates(issue),
+    responsibleIds: issue.issueResponsibles.map((ir) => ir.responsibleId),
+  };
 }
 
 export async function updateIssue(
@@ -260,7 +308,12 @@ export async function updateIssue(
     throw Object.assign(new Error("Issue not found"), { statusCode: 404 });
   }
 
-  const { labels: labelIds, ...updateFields } = input;
+  const { labels: labelIds, responsibleIds, ...updateFields } = input;
+
+  // Enforce WIP limit when statusId changes via PATCH (e.g. drag-and-drop)
+  if (updateFields.statusId && updateFields.statusId !== existing.statusId) {
+    await enforceWipLimit(projectId, updateFields.statusId);
+  }
 
   // Auto-copy dates from sprint if sprintId changes and dates are not explicitly provided
   if (
@@ -279,30 +332,51 @@ export async function updateIssue(
     }
   }
 
-  const [updated] = await db
-    .update(issues)
-    .set({
-      ...updateFields,
-      updatedAt: new Date(),
-    })
-    .where(eq(issues.id, existing.id))
-    .returning();
+  // Wrap issue update + labels in a transaction to prevent partial label loss
+  const [updated] = await db.transaction(async (tx) => {
+    const [result] = await tx
+      .update(issues)
+      .set({
+        ...updateFields,
+        updatedAt: new Date(),
+      })
+      .where(eq(issues.id, existing.id))
+      .returning();
 
-  // Update labels if provided
-  if (labelIds !== undefined) {
-    await db
-      .delete(issueLabels)
-      .where(eq(issueLabels.issueId, existing.id));
+    // Update labels if provided
+    if (labelIds !== undefined) {
+      await tx
+        .delete(issueLabels)
+        .where(eq(issueLabels.issueId, existing.id));
 
-    if (labelIds.length > 0) {
-      await db.insert(issueLabels).values(
-        labelIds.map((labelId) => ({
-          issueId: existing.id,
-          labelId,
-        })),
-      );
+      if (labelIds.length > 0) {
+        await tx.insert(issueLabels).values(
+          labelIds.map((labelId) => ({
+            issueId: existing.id,
+            labelId,
+          })),
+        );
+      }
     }
-  }
+
+    // Update responsibles if provided
+    if (responsibleIds !== undefined) {
+      await tx
+        .delete(issueResponsibles)
+        .where(eq(issueResponsibles.issueId, existing.id));
+
+      if (responsibleIds.length > 0) {
+        await tx.insert(issueResponsibles).values(
+          responsibleIds.map((responsibleId) => ({
+            issueId: existing.id,
+            responsibleId,
+          })),
+        );
+      }
+    }
+
+    return [result];
+  });
 
   // Emit change events for tracked fields
   const trackedFields: Array<keyof typeof updateFields> = [
@@ -310,13 +384,13 @@ export async function updateIssue(
     "description",
     "priority",
     "assigneeId",
-    "responsibleId",
     "sprintId",
     "storyPoints",
     "startDate",
     "endDate",
     "type",
     "category",
+    "statusId",
   ];
 
   for (const field of trackedFields) {
@@ -335,7 +409,7 @@ export async function updateIssue(
     }
   }
 
-  return serializeIssue(updated);
+  return serializeDates(updated);
 }
 
 export async function deleteIssue(projectId: string, identifier: string) {
@@ -369,49 +443,8 @@ export async function transitionIssue(
     throw Object.assign(new Error("Issue not found"), { statusCode: 404 });
   }
 
-  // Validate that the transition is allowed
-  if (existing.statusId) {
-    const allowedTransition = await db.query.workflowTransitions.findFirst({
-      where: and(
-        eq(workflowTransitions.projectId, projectId),
-        eq(workflowTransitions.fromStatusId, existing.statusId),
-        eq(workflowTransitions.toStatusId, input.statusId),
-      ),
-    });
-
-    if (!allowedTransition) {
-      throw Object.assign(
-        new Error("This status transition is not allowed"),
-        { statusCode: 400 },
-      );
-    }
-  }
-
   // Check WIP limit on target status
-  const targetStatus = await db.query.workflowStatuses.findFirst({
-    where: eq(workflowStatuses.id, input.statusId),
-  });
-
-  if (targetStatus?.wipLimit) {
-    const currentCount = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(issues)
-      .where(
-        and(
-          eq(issues.projectId, projectId),
-          eq(issues.statusId, input.statusId),
-        ),
-      );
-
-    if (Number(currentCount[0].count) >= targetStatus.wipLimit) {
-      throw Object.assign(
-        new Error(
-          `WIP limit reached for status "${targetStatus.name}" (max: ${targetStatus.wipLimit})`,
-        ),
-        { statusCode: 400 },
-      );
-    }
-  }
+  await enforceWipLimit(projectId, input.statusId);
 
   const [updated] = await db
     .update(issues)
@@ -430,5 +463,5 @@ export async function transitionIssue(
     toStatusId: input.statusId,
   });
 
-  return serializeIssue(updated);
+  return serializeDates(updated);
 }

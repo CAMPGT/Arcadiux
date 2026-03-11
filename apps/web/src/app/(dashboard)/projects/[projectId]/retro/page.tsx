@@ -11,6 +11,7 @@ import { RetroTemplate } from '@arcadiux/shared/constants';
 import { z } from 'zod';
 import type { ApiResponse, RetroBoard, Sprint } from '@arcadiux/shared/types';
 import { apiClient } from '@/lib/api-client';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,10 +42,10 @@ import { Plus, MessageSquare, Loader2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 
 const templateLabels: Record<string, string> = {
-  mad_sad_glad: 'Mad / Sad / Glad',
-  start_stop_continue: 'Start / Stop / Continue',
-  four_ls: 'Four Ls (Liked, Learned, Lacked, Longed For)',
-  custom: 'Custom',
+  mad_sad_glad: 'Enojado / Triste / Contento',
+  start_stop_continue: 'Empezar / Dejar / Continuar',
+  four_ls: 'Cuatro L (Gustó, Aprendí, Faltó, Deseé)',
+  custom: 'Personalizado',
 };
 
 export default function RetroListPage() {
@@ -139,8 +140,8 @@ export default function RetroListPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-20" aria-busy="true">
+          <LoadingSpinner />
         </div>
       ) : retros && retros.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,16 +9,19 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  closestCorners,
+  pointerWithin,
+  rectIntersection,
   type DragStartEvent,
   type DragEndEvent,
-  type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import { apiClient } from '@/lib/api-client';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import type { ApiResponse, Issue, WorkflowStatus, User, Project, Sprint, Responsible } from '@arcadiux/shared/types';
-import { IssueType, PriorityLevel } from '@arcadiux/shared/constants';
+import { IssueType, PriorityLevel, PriorityLevelLabels } from '@arcadiux/shared/constants';
 import { BoardColumn } from '@/components/board/board-column';
 import { BoardCard } from '@/components/board/board-card';
+import { CreateIssueDialog } from '@/components/issue/create-issue-dialog';
 import { useBoardFilters } from '@/stores/use-board-filters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,8 +34,6 @@ import {
 } from '@/components/ui/select';
 import { Sparkles, Filter, X } from 'lucide-react';
 import { AiPanel } from '@/components/ai/ai-panel';
-import { useIssueModal } from '@/stores/use-issue-modal';
-import { IssueDetail } from '@/components/issue/issue-detail';
 import { toast } from 'sonner';
 
 export default function BoardPage() {
@@ -40,8 +41,14 @@ export default function BoardPage() {
   const projectId = params?.projectId ?? '';
   const queryClient = useQueryClient();
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
-  const { isOpen: issueModalOpen, selectedIssueId, closeIssue } = useIssueModal();
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createStatusId, setCreateStatusId] = useState<string | null>(null);
+
+  const handleAddIssue = useCallback((statusId: string) => {
+    setCreateStatusId(statusId);
+    setCreateDialogOpen(true);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -210,14 +217,77 @@ export default function BoardPage() {
       .sort((a, b) => a.position - b.position);
   }, [statuses]);
 
+  const epics = useMemo(
+    () => issues?.filter((i) => i.type === 'epic') ?? [],
+    [issues],
+  );
+
   const hasFilters = sprintFilter || assigneeFilter || typeFilter || priorityFilter || searchText;
   const isLoading = statusesLoading || issuesLoading;
 
-  // Sprints disponibles para el filtro (activos y planificados)
+  // Sprints disponibles para el filtro y para mover issues (activos y planificados)
   const filterableSprints = useMemo(
     () => sprintsData?.filter((s) => s.status === 'active' || s.status === 'planned') ?? [],
     [sprintsData],
   );
+
+  const moveSprintMutation = useMutation({
+    mutationFn: async ({ issueId, sprintId }: { issueId: string; sprintId: string }) => {
+      return apiClient.patch<ApiResponse<Issue>>(
+        `/api/projects/${projectId}/issues/${issueId}`,
+        { sprintId },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId, 'issues'] });
+      toast.success('Issue movido al sprint');
+    },
+    onError: () => {
+      toast.error('Error al mover el issue');
+    },
+  });
+
+  const handleMoveSprint = useCallback(
+    (issueId: string, sprintId: string) => {
+      moveSprintMutation.mutate({ issueId, sprintId });
+    },
+    [moveSprintMutation],
+  );
+
+  // Custom collision detection: prefer pointerWithin (checks which column the
+  // pointer is inside) and fall back to rectIntersection when the pointer is
+  // between columns.  Fixes issues moving cards between adjacent columns like
+  // Done ↔ Test where closestCorners kept snapping back to the source column.
+  const collisionDetection: CollisionDetection = useCallback((args) => {
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) return pointerCollisions;
+    return rectIntersection(args);
+  }, []);
+
+  // --- Board height: fill remaining viewport space ---
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const top = el.getBoundingClientRect().top;
+      const h = Math.max(200, window.innerHeight - top - 8);
+      el.style.height = `${h}px`;
+    };
+
+    // Prevent <main> from scrolling so the board fills the viewport
+    const main = el.closest('main');
+    if (main) main.style.overflowY = 'hidden';
+
+    requestAnimationFrame(update);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      if (main) main.style.overflowY = '';
+    };
+  }, [isLoading]);
 
   // --- DnD handlers ---
 
@@ -371,7 +441,7 @@ export default function BoardPage() {
             <SelectItem value="all">Todas las prioridades</SelectItem>
             {Object.values(PriorityLevel).map((p) => (
               <SelectItem key={p} value={p}>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
+                {PriorityLevelLabels[p]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -420,17 +490,17 @@ export default function BoardPage() {
 
       {/* Board */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-20" aria-busy="true">
+          <LoadingSpinner />
         </div>
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          <div ref={boardRef} className="flex gap-4 overflow-auto pb-2">
             {sortedStatuses.map((status) => {
               const columnIssues = filteredIssues
                 .filter((issue) => issue.statusId === status.id)
@@ -444,6 +514,9 @@ export default function BoardPage() {
                   projectKey={project?.key ?? ''}
                   members={membersMap}
                   responsibles={responsiblesMap}
+                  moveTargetSprints={filterableSprints}
+                  onMoveSprint={handleMoveSprint}
+                  onAddIssue={handleAddIssue}
                 />
               );
             })}
@@ -460,10 +533,10 @@ export default function BoardPage() {
                       ? membersMap[activeIssue.assigneeId]
                       : null
                   }
-                  responsibleName={
-                    activeIssue.responsibleId
-                      ? responsiblesMap[activeIssue.responsibleId]?.fullName
-                      : null
+                  responsibleNames={
+                    activeIssue.responsibleIds
+                      ?.map((id) => responsiblesMap[id]?.fullName)
+                      .filter(Boolean) as string[] | undefined
                   }
                 />
               </div>
@@ -479,18 +552,18 @@ export default function BoardPage() {
         onClose={() => setAiPanelOpen(false)}
       />
 
-      {/* Issue Detail */}
-      {selectedIssueId && (
-        <IssueDetail
-          issueId={selectedIssueId}
-          projectId={projectId}
-          projectKey={project?.key ?? ''}
-          open={issueModalOpen}
-          onOpenChange={(open) => {
-            if (!open) closeIssue();
-          }}
-        />
-      )}
+      {/* Create Issue Dialog */}
+      <CreateIssueDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        projectId={projectId}
+        defaultSprintId={sprintFilter}
+        defaultStatusId={createStatusId}
+        members={membersData}
+        responsibles={responsiblesData}
+        sprints={sprintsData}
+        epics={epics}
+      />
     </div>
   );
 }

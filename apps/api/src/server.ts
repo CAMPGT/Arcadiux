@@ -27,7 +27,7 @@ async function main() {
     });
 
     // Setup Socket.IO on the underlying HTTP server
-    setupWebSocket(app.server);
+    setupWebSocket(app.server, app.log);
 
     app.log.info(
       `Server listening on http://${config.API_HOST}:${config.API_PORT}`,

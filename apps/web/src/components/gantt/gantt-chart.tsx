@@ -23,6 +23,7 @@ interface GanttChartProps {
   sprint: Sprint | null;
   projectKey: string;
   zoom: ZoomLevel;
+  statusCategoryMap?: Record<string, string>;
   onResize: (issueId: string, newStart: Date, newEnd: Date) => void;
   onIssueClick: (issueId: string) => void;
 }
@@ -34,6 +35,7 @@ export function GanttChart({
   sprint,
   projectKey,
   zoom,
+  statusCategoryMap,
   onResize,
   onIssueClick,
 }: GanttChartProps) {
@@ -191,6 +193,7 @@ export function GanttChart({
                     <button
                       onClick={() => toggleEpic('__no_epic__')}
                       className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-accent"
+                      aria-label={row.isExpanded ? 'Colapsar grupo Sin Épica' : 'Expandir grupo Sin Épica'}
                     >
                       {row.isExpanded ? (
                         <span className="text-xs">▼</span>
@@ -211,6 +214,9 @@ export function GanttChart({
                   issueKey={getIssueKey(projectKey, row.issue.issueNumber)}
                   title={row.issue.title}
                   type={row.issue.type as IssueType}
+                  endDate={row.issue.endDate}
+                  updatedAt={row.issue.updatedAt}
+                  statusCategory={row.issue.statusId ? statusCategoryMap?.[row.issue.statusId] : null}
                   indent={row.indent}
                   isGroup={row.isGroup}
                   isExpanded={row.isExpanded}
@@ -282,6 +288,8 @@ export function GanttChart({
                         type={issue.type as IssueType}
                         startDateStr={start}
                         endDateStr={end}
+                        updatedAt={issue.updatedAt}
+                        statusCategory={issue.statusId ? statusCategoryMap?.[issue.statusId] : null}
                         timelineStart={timeline.timelineStart}
                         timelineEnd={timeline.timelineEnd}
                         dayWidthPx={timeline.dayWidthPx}

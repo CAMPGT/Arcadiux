@@ -11,18 +11,20 @@ import {
   Kanban,
   ListTodo,
   Timer,
+  GanttChart,
   BarChart3,
   MessageSquare,
   Settings,
 } from 'lucide-react';
 
 const tabs = [
-  { label: 'Board', href: 'board', icon: Kanban },
+  { label: 'Tablero', href: 'board', icon: Kanban },
   { label: 'Backlog', href: 'backlog', icon: ListTodo },
   { label: 'Sprints', href: 'sprints', icon: Timer },
-  { label: 'Reports', href: 'reports', icon: BarChart3 },
+  { label: 'Gantt', href: 'gantt', icon: GanttChart },
+  { label: 'Reportes', href: 'reports', icon: BarChart3 },
   { label: 'Retro', href: 'retro', icon: MessageSquare },
-  { label: 'Settings', href: 'settings', icon: Settings },
+  { label: 'Configuración', href: 'settings', icon: Settings },
 ];
 
 export default function ProjectLayout({
@@ -49,7 +51,7 @@ export default function ProjectLayout({
       {/* Project Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
-          {project?.name ?? 'Loading...'}
+          {project?.name ?? 'Cargando...'}
         </h1>
         {project?.description && (
           <p className="text-sm text-muted-foreground mt-1">
@@ -83,7 +85,7 @@ export default function ProjectLayout({
       </nav>
 
       {/* Page Content */}
-      {children}
+      <div>{children}</div>
     </div>
   );
 }

@@ -8,9 +8,10 @@ import {
   users,
 } from "@arcadiux/db/schema";
 import type { CreateProjectInput, UpdateProjectInput } from "@arcadiux/shared/validators";
-import { DEFAULT_WORKFLOW_STATUSES } from "@arcadiux/shared/constants";
+import { DEFAULT_WORKFLOW_STATUSES, UUID_RE } from "@arcadiux/shared/constants";
 import type { ProjectType } from "@arcadiux/shared/constants";
 import type { AddMemberInput, UpdateMemberInput } from "./projects.schemas.js";
+import { serializeDates } from "../../utils/serialize.js";
 
 export async function createProject(
   input: CreateProjectInput,
@@ -87,11 +88,7 @@ export async function createProject(
       await tx.insert(workflowTransitions).values(transitionValues);
     }
 
-    return {
-      ...project,
-      createdAt: project.createdAt?.toISOString() ?? null,
-      updatedAt: project.updatedAt?.toISOString() ?? null,
-    };
+    return serializeDates(project);
   });
 }
 
@@ -115,14 +112,10 @@ export async function listProjects(userId: string) {
   });
 
   return memberships.map((m) => ({
-    ...m.project,
+    ...serializeDates(m.project),
     role: m.role,
-    createdAt: m.project.createdAt?.toISOString() ?? null,
-    updatedAt: m.project.updatedAt?.toISOString() ?? null,
   }));
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function getByKey(key: string) {
   const isUuid = UUID_RE.test(key);
@@ -147,11 +140,7 @@ export async function getByKey(key: string) {
     throw Object.assign(new Error("Project not found"), { statusCode: 404 });
   }
 
-  return {
-    ...project,
-    createdAt: project.createdAt?.toISOString() ?? null,
-    updatedAt: project.updatedAt?.toISOString() ?? null,
-  };
+  return serializeDates(project);
 }
 
 export async function updateProject(
@@ -188,23 +177,28 @@ export async function updateProject(
     throw Object.assign(new Error("Project not found"), { statusCode: 404 });
   }
 
-  return {
-    ...updated,
-    createdAt: updated.createdAt?.toISOString() ?? null,
-    updatedAt: updated.updatedAt?.toISOString() ?? null,
-  };
+  return serializeDates(updated);
 }
 
-export async function deleteProject(projectId: string) {
-  const [deleted] = await db
-    .delete(projects)
-    .where(eq(projects.id, projectId))
-    .returning();
+export async function deleteProject(projectId: string, userId: string) {
+  // Only the project owner can delete
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
+    columns: { ownerId: true },
+  });
 
-  if (!deleted) {
+  if (!project) {
     throw Object.assign(new Error("Project not found"), { statusCode: 404 });
   }
 
+  if (project.ownerId !== userId) {
+    throw Object.assign(
+      new Error("Only the project owner can delete this project"),
+      { statusCode: 403 },
+    );
+  }
+
+  await db.delete(projects).where(eq(projects.id, projectId));
   return { deleted: true };
 }
 

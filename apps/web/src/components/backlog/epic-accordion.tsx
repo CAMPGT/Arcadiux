@@ -34,7 +34,7 @@ export function EpicAccordion({
     0,
   );
   const doneCount = children.filter((issue) => {
-    const status = statuses[issue.statusId];
+    const status = issue.statusId ? statuses[issue.statusId] : undefined;
     return status?.category === 'done';
   }).length;
 
@@ -72,7 +72,7 @@ export function EpicAccordion({
       {isExpanded && children.length > 0 && (
         <div className="border-t">
           {children.map((issue) => {
-            const status = statuses[issue.statusId];
+            const status = issue.statusId ? statuses[issue.statusId] : undefined;
             const assignee = issue.assigneeId
               ? members[issue.assigneeId]
               : null;

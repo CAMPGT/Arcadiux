@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { registerSchema } from '@arcadiux/shared/validators';
-import type { ApiResponse, AuthTokens, User } from '@arcadiux/shared/types';
+import type { ApiResponse, User } from '@arcadiux/shared/types';
 import { apiClient, setTokens } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,10 +56,10 @@ export default function RegisterPage() {
     try {
       const { confirmPassword: _, ...registerData } = data;
       const response = await apiClient.post<
-        ApiResponse<{ user: User; accessToken: string; refreshToken: string }>
+        ApiResponse<{ user: User; accessToken: string }>
       >('/api/auth/register', registerData);
 
-      setTokens(response.data.accessToken, response.data.refreshToken);
+      setTokens(response.data.accessToken);
       toast.success('¡Cuenta creada exitosamente!');
       router.push('/projects');
     } catch (error) {

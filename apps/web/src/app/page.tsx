@@ -70,8 +70,8 @@ export default function LandingPage() {
         {/* Feature Grid */}
         <div className="mx-auto mt-20 grid max-w-5xl grid-cols-1 gap-8 sm:grid-cols-3">
           <div className="rounded-lg border p-6">
-            <div className="mb-3 rounded-full bg-blue-50 p-2.5 w-fit">
-              <LayoutDashboard className="h-5 w-5 text-blue-600" />
+            <div className="mb-3 rounded-full bg-blue-50 dark:bg-blue-900/30 p-2.5 w-fit">
+              <LayoutDashboard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <h3 className="mb-2 font-semibold">Tableros Scrum y Kanban</h3>
             <p className="text-sm text-muted-foreground">
@@ -80,9 +80,9 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="rounded-lg border p-6">
-            <div className="mb-3 rounded-full bg-green-50 p-2.5 w-fit">
+            <div className="mb-3 rounded-full bg-green-50 dark:bg-green-900/30 p-2.5 w-fit">
               <svg
-                className="h-5 w-5 text-green-600"
+                className="h-5 w-5 text-green-600 dark:text-green-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -102,9 +102,9 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="rounded-lg border p-6">
-            <div className="mb-3 rounded-full bg-violet-50 p-2.5 w-fit">
+            <div className="mb-3 rounded-full bg-violet-50 dark:bg-violet-900/30 p-2.5 w-fit">
               <svg
-                className="h-5 w-5 text-violet-600"
+                className="h-5 w-5 text-violet-600 dark:text-violet-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"

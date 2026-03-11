@@ -1,32 +1,10 @@
 'use client';
 
 import React from 'react';
-import {
-  Zap,
-  BookOpen,
-  CheckSquare,
-  GitBranch,
-  Bug,
-} from 'lucide-react';
 import type { Issue } from '@arcadiux/shared/types';
 import type { IssueType } from '@arcadiux/shared/constants';
 import { cn, getIssueKey } from '@/lib/utils';
-
-const typeIcons: Record<IssueType, React.ElementType> = {
-  epic: Zap,
-  story: BookOpen,
-  task: CheckSquare,
-  subtask: GitBranch,
-  bug: Bug,
-};
-
-const typeColors: Record<IssueType, string> = {
-  epic: 'text-violet-600',
-  story: 'text-green-600',
-  task: 'text-blue-600',
-  subtask: 'text-cyan-600',
-  bug: 'text-red-600',
-};
+import { typeIcons, typeColors } from '@/lib/issue-utils';
 
 interface GanttNoDatesListProps {
   issues: Issue[];
@@ -54,7 +32,7 @@ export function GanttNoDatesList({ issues, projectKey, onIssueClick }: GanttNoDa
             >
               <TypeIcon className={cn('h-3 w-3', typeColors[issue.type as IssueType])} />
               <span className="font-medium text-muted-foreground">{key}</span>
-              <span className="max-w-[150px] truncate">{issue.title}</span>
+              <span className="max-w-[150px] truncate" title={issue.title}>{issue.title}</span>
             </button>
           );
         })}

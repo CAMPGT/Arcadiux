@@ -54,6 +54,13 @@ export const PriorityLevel = {
 
 export type PriorityLevel = (typeof PriorityLevel)[keyof typeof PriorityLevel];
 
+export const PriorityLevelLabels: Record<PriorityLevel, string> = {
+  [PriorityLevel.CRITICAL]: 'Crítica',
+  [PriorityLevel.HIGH]: 'Alta',
+  [PriorityLevel.MEDIUM]: 'Media',
+  [PriorityLevel.LOW]: 'Baja',
+};
+
 // ─── Sprint Statuses ─────────────────────────────────────────────────────────
 
 export const SprintStatus = {
@@ -159,6 +166,11 @@ export const DEFAULT_WORKFLOW_STATUSES: Record<
     { name: 'Cancelado', category: StatusCategory.DONE, position: 5, wipLimit: null },
   ],
 };
+
+// ─── UUID Regex ─────────────────────────────────────────────────────────────
+
+/** Regex to test whether a string is a valid UUID v4 */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── Numeric Constants ───────────────────────────────────────────────────────
 

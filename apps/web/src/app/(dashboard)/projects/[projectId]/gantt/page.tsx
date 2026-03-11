@@ -5,10 +5,9 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { apiClient } from '@/lib/api-client';
-import type { ApiResponse, Issue, Project, Sprint } from '@arcadiux/shared/types';
+import type { ApiResponse, Issue, Project, Sprint, WorkflowStatus } from '@arcadiux/shared/types';
 import { GanttChart } from '@/components/gantt/gantt-chart';
 import { useIssueModal } from '@/stores/use-issue-modal';
-import { IssueDetail } from '@/components/issue/issue-detail';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -18,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CalendarRange, ListTodo } from 'lucide-react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { toast } from 'sonner';
 import type { ZoomLevel } from '@/lib/gantt-utils';
 import Link from 'next/link';
@@ -26,7 +26,7 @@ export default function GanttPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params?.projectId ?? '';
   const queryClient = useQueryClient();
-  const { isOpen: issueModalOpen, selectedIssueId, openIssue, closeIssue } = useIssueModal();
+  const { selectedIssueId, openIssue } = useIssueModal();
 
   const [sprintFilter, setSprintFilter] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomLevel>('day');
@@ -66,6 +66,23 @@ export default function GanttPage() {
     },
     enabled: !!projectId,
   });
+
+  const { data: statuses } = useQuery({
+    queryKey: ['project', projectId, 'statuses'],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<WorkflowStatus[]>>(
+        `/api/projects/${projectId}/statuses`,
+      );
+      return res.data;
+    },
+    enabled: !!projectId,
+  });
+
+  const statusCategoryMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    statuses?.forEach((s) => { map[s.id] = s.category; });
+    return map;
+  }, [statuses]);
 
   // ─── Auto-select active sprint ─────────────────────────────────────────────
 
@@ -211,8 +228,8 @@ export default function GanttPage() {
 
       {/* Content */}
       {issuesLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-20" aria-busy="true">
+          <LoadingSpinner />
         </div>
       ) : noIssues ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border bg-muted/30 py-20">
@@ -232,23 +249,12 @@ export default function GanttPage() {
           sprint={selectedSprint}
           projectKey={project?.key ?? ''}
           zoom={zoom}
+          statusCategoryMap={statusCategoryMap}
           onResize={handleResize}
           onIssueClick={openIssue}
         />
       )}
 
-      {/* Issue Detail Modal */}
-      {selectedIssueId && (
-        <IssueDetail
-          issueId={selectedIssueId}
-          projectId={projectId}
-          projectKey={project?.key ?? ''}
-          open={issueModalOpen}
-          onOpenChange={(open) => {
-            if (!open) closeIssue();
-          }}
-        />
-      )}
     </div>
   );
 }

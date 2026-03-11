@@ -139,7 +139,7 @@ export async function sprintRoutes(app: FastifyInstance) {
         }),
         body: z.object({
           moveToSprintId: z.string().uuid().optional(),
-        }).optional(),
+        }).nullable().optional(),
       },
     },
     async (request, reply) => {

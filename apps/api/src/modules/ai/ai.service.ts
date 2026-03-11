@@ -21,7 +21,10 @@ function getClient(): Anthropic {
         { statusCode: 503 },
       );
     }
-    client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
+    client = new Anthropic({
+      apiKey: config.ANTHROPIC_API_KEY,
+      timeout: config.AI_TIMEOUT_MS,
+    });
   }
   return client;
 }

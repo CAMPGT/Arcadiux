@@ -3,11 +3,12 @@
 import React, { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import type { ApiResponse, Sprint, Issue, WorkflowStatus } from '@arcadiux/shared/types';
+import type { ApiResponse, Sprint, Issue, WorkflowStatus, LifecycleReport } from '@arcadiux/shared/types';
 import { IssueCategory, IssueCategoryLabels } from '@arcadiux/shared/constants';
 import { apiClient } from '@/lib/api-client';
 import { BurndownChart } from '@/components/reports/burndown-chart';
 import { VelocityChart } from '@/components/reports/velocity-chart';
+import { LifecycleTable } from '@/components/reports/lifecycle-table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -76,6 +77,17 @@ export default function ReportsPage() {
   const currentSprintId = selectedSprintId || activeSprint?.id || '';
   const currentSprint = sprints?.find((s) => s.id === currentSprintId);
 
+  const { data: lifecycleData } = useQuery({
+    queryKey: ['project', projectId, 'lifecycle', currentSprintId],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<LifecycleReport>>(
+        `/api/projects/${projectId}/reports/lifecycle?sprintId=${currentSprintId}`,
+      );
+      return res.data;
+    },
+    enabled: !!projectId && !!currentSprintId,
+  });
+
   // Build burndown data
   const burndownData = useMemo(() => {
     if (!currentSprint || !issues) return [];
@@ -89,6 +101,7 @@ export default function ReportsPage() {
       0,
     );
 
+    if (!currentSprint.startDate || !currentSprint.endDate) return [];
     const startDate = new Date(currentSprint.startDate);
     const endDate = new Date(currentSprint.endDate);
     const days = Math.ceil(
@@ -104,7 +117,7 @@ export default function ReportsPage() {
       // For actual, simulate based on completed issues up to this date
       const completedPoints = sprintIssues
         .filter((issue) => {
-          if (!doneStatusIds.has(issue.statusId)) return false;
+          if (!issue.statusId || !doneStatusIds.has(issue.statusId)) return false;
           return new Date(issue.updatedAt) <= date;
         })
         .reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
@@ -126,7 +139,7 @@ export default function ReportsPage() {
       .filter((s) => s.status === 'completed' || s.status === 'active')
       .sort(
         (a, b) =>
-          new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+          new Date(a.startDate ?? 0).getTime() - new Date(b.startDate ?? 0).getTime(),
       )
       .slice(-8);
 
@@ -140,7 +153,7 @@ export default function ReportsPage() {
         0,
       );
       const completed = sprintIssues
-        .filter((i) => doneStatusIds.has(i.statusId))
+        .filter((i) => i.statusId != null && doneStatusIds.has(i.statusId))
         .reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
 
       return {
@@ -166,7 +179,7 @@ export default function ReportsPage() {
       i.sprintId === currentSprint.id &&
       (selectedCategory === 'all' || i.category === selectedCategory)
     );
-    const completed = sprintIssues.filter((i) => doneStatusIds.has(i.statusId));
+    const completed = sprintIssues.filter((i) => i.statusId != null && doneStatusIds.has(i.statusId));
 
     return {
       totalIssues: sprintIssues.length,
@@ -272,16 +285,18 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {Math.ceil(
-                  (new Date(currentSprint.endDate).getTime() -
-                    new Date(currentSprint.startDate).getTime()) /
-                    (1000 * 60 * 60 * 24),
-                )}{' '}
+                {currentSprint.startDate && currentSprint.endDate
+                  ? Math.ceil(
+                      (new Date(currentSprint.endDate).getTime() -
+                        new Date(currentSprint.startDate).getTime()) /
+                        (1000 * 60 * 60 * 24),
+                    )
+                  : '—'}{' '}
                 días
               </div>
               <p className="text-xs text-muted-foreground">
-                {formatDate(currentSprint.startDate, 'MMM d')} -{' '}
-                {formatDate(currentSprint.endDate, 'MMM d')}
+                {currentSprint.startDate ? formatDate(currentSprint.startDate, 'MMM d') : '—'} -{' '}
+                {currentSprint.endDate ? formatDate(currentSprint.endDate, 'MMM d') : '—'}
               </p>
             </CardContent>
           </Card>
@@ -315,6 +330,7 @@ export default function ReportsPage() {
         <TabsList>
           <TabsTrigger value="burndown">Burndown</TabsTrigger>
           <TabsTrigger value="velocity">Velocidad</TabsTrigger>
+          <TabsTrigger value="lifecycle">Ciclo de Vida</TabsTrigger>
         </TabsList>
 
         <TabsContent value="burndown">
@@ -326,6 +342,20 @@ export default function ReportsPage() {
 
         <TabsContent value="velocity">
           <VelocityChart data={velocityData} />
+        </TabsContent>
+
+        <TabsContent value="lifecycle">
+          {lifecycleData ? (
+            <LifecycleTable data={lifecycleData} />
+          ) : currentSprintId ? (
+            <div className="py-10 text-center text-muted-foreground">
+              Cargando datos de ciclo de vida...
+            </div>
+          ) : (
+            <div className="py-10 text-center text-muted-foreground">
+              Selecciona un sprint para ver el ciclo de vida de los issues.
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

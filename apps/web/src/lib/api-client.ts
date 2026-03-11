@@ -13,24 +13,103 @@ class ApiError extends Error {
   }
 }
 
+// --- In-memory token (never stored in localStorage) ---
+let inMemoryAccessToken: string | null = null;
+
 function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('accessToken');
+  return inMemoryAccessToken;
 }
 
-function setTokens(accessToken: string, refreshToken: string): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('accessToken', accessToken);
-  localStorage.setItem('refreshToken', refreshToken);
+function setTokens(accessToken: string): void {
+  inMemoryAccessToken = accessToken;
 }
 
 function clearTokens(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
+  inMemoryAccessToken = null;
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
+async function clearTokensAndLogout(): Promise<void> {
+  inMemoryAccessToken = null;
+  try {
+    await fetch(`${BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch {
+    // Best effort — cookie may already be expired
+  }
+}
+
+// --- Refresh token mutex ---
+// Ensures only one refresh request is in-flight at a time.
+// Concurrent 401s will all wait for the same refresh result.
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // sends httpOnly cookie automatically
+      });
+
+      if (!res.ok) return false;
+
+      const json = (await res.json()) as {
+        data: { accessToken: string };
+      };
+      setTokens(json.data.accessToken);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+// --- Silent refresh on page load (cookie present but in-memory token lost) ---
+
+let silentRefreshDone = false;
+
+async function ensureAccessToken(): Promise<void> {
+  if (inMemoryAccessToken || silentRefreshDone) return;
+  silentRefreshDone = true;
+  await refreshAccessToken();
+}
+
+// --- Core fetch wrapper with auto-refresh ---
+
+async function fetchWithAuth<T>(
+  url: string,
+  init: RequestInit,
+): Promise<T> {
+  // On first request after page load, attempt silent refresh if needed
+  await ensureAccessToken();
+
+  let response = await fetch(url, init);
+
+  // On 401, attempt a single token refresh then retry
+  if (response.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      // Rebuild headers with the new token
+      const newHeaders = { ...Object.fromEntries(new Headers(init.headers).entries()) };
+      const newToken = getToken();
+      if (newToken) {
+        newHeaders['Authorization'] = `Bearer ${newToken}`;
+      }
+      response = await fetch(url, { ...init, headers: newHeaders });
+    }
+  }
+
+  // If still 401 after refresh attempt, clear session and redirect
   if (response.status === 401) {
     clearTokens();
     if (typeof window !== 'undefined') {
@@ -54,6 +133,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
   return response.json() as Promise<T>;
 }
+
+// --- Helpers ---
 
 function buildHeaders(customHeaders?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
@@ -86,48 +167,58 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
 
 export const apiClient = {
   async get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-    const response = await fetch(buildUrl(path, params), {
+    return fetchWithAuth<T>(buildUrl(path, params), {
       method: 'GET',
       headers: buildHeaders(),
     });
-    return handleResponse<T>(response);
   },
 
   async post<T>(path: string, body?: unknown): Promise<T> {
-    const response = await fetch(buildUrl(path), {
+    return fetchWithAuth<T>(buildUrl(path), {
       method: 'POST',
       headers: buildHeaders(),
-      body: JSON.stringify(body ?? {}),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    return handleResponse<T>(response);
   },
 
   async put<T>(path: string, body?: unknown): Promise<T> {
-    const response = await fetch(buildUrl(path), {
+    return fetchWithAuth<T>(buildUrl(path), {
       method: 'PUT',
       headers: buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
-    return handleResponse<T>(response);
   },
 
   async patch<T>(path: string, body?: unknown): Promise<T> {
-    const response = await fetch(buildUrl(path), {
+    return fetchWithAuth<T>(buildUrl(path), {
       method: 'PATCH',
       headers: buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
-    return handleResponse<T>(response);
   },
 
   async delete<T>(path: string): Promise<T> {
-    const response = await fetch(buildUrl(path), {
+    return fetchWithAuth<T>(buildUrl(path), {
       method: 'DELETE',
       headers: buildHeaders(),
     });
-    return handleResponse<T>(response);
+  },
+
+  async upload<T>(path: string, file: File): Promise<T> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: Record<string, string> = {};
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetchWithAuth<T>(buildUrl(path), {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
   },
 };
 
-export { ApiError, getToken, setTokens, clearTokens };
+export { ApiError, getToken, setTokens, clearTokens, clearTokensAndLogout, refreshAccessToken };
 export type { ApiResponse, PaginatedResponse };

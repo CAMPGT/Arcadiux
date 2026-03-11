@@ -2,36 +2,61 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "@arcadiux/db";
 import { issues } from "@arcadiux/db/schema";
 import type { ReorderInput } from "@arcadiux/shared/validators";
+import { serializeDates } from "../../utils/serialize.js";
 
-export async function getBacklog(projectId: string) {
-  const backlogIssues = await db.query.issues.findMany({
-    where: and(
-      eq(issues.projectId, projectId),
-      isNull(issues.sprintId),
-    ),
-    with: {
-      status: true,
-      assignee: {
-        columns: { id: true, email: true, fullName: true, avatarUrl: true },
+export async function getBacklog(
+  projectId: string,
+  page: number = 1,
+  pageSize: number = 50,
+) {
+  const where = and(
+    eq(issues.projectId, projectId),
+    isNull(issues.sprintId),
+  );
+
+  const offset = (page - 1) * pageSize;
+
+  // Run count and data queries in parallel
+  const [countResult, backlogIssues] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(issues)
+      .where(where),
+    db.query.issues.findMany({
+      where,
+      with: {
+        status: true,
+        assignee: {
+          columns: { id: true, email: true, fullName: true, avatarUrl: true },
+        },
+        reporter: {
+          columns: { id: true, email: true, fullName: true, avatarUrl: true },
+        },
+        issueLabels: {
+          with: { label: true },
+        },
+        epic: {
+          columns: { id: true, issueNumber: true, title: true },
+        },
       },
-      reporter: {
-        columns: { id: true, email: true, fullName: true, avatarUrl: true },
-      },
-      issueLabels: {
-        with: { label: true },
-      },
-      epic: {
-        columns: { id: true, issueNumber: true, title: true },
-      },
+      orderBy: (i, { asc }) => [asc(i.position)],
+      limit: pageSize,
+      offset,
+    }),
+  ]);
+
+  const totalItems = Number(countResult[0].count);
+  const totalPages = Math.ceil(totalItems / pageSize);
+
+  return {
+    data: backlogIssues.map(serializeDates),
+    pagination: {
+      page,
+      pageSize,
+      totalItems,
+      totalPages,
     },
-    orderBy: (i, { asc }) => [asc(i.position)],
-  });
-
-  return backlogIssues.map((issue) => ({
-    ...issue,
-    createdAt: issue.createdAt?.toISOString() ?? null,
-    updatedAt: issue.updatedAt?.toISOString() ?? null,
-  }));
+  };
 }
 
 export async function reorderBacklog(

@@ -7,14 +7,7 @@ import {
 } from "@arcadiux/db/schema";
 import type { CreateCommentInput } from "@arcadiux/shared/validators";
 import { eventEmitter } from "../../events/emitter.js";
-
-function serializeComment(comment: any) {
-  return {
-    ...comment,
-    createdAt: comment.createdAt?.toISOString?.() ?? comment.createdAt ?? null,
-    updatedAt: comment.updatedAt?.toISOString?.() ?? comment.updatedAt ?? null,
-  };
-}
+import { serializeDates } from "../../utils/serialize.js";
 
 export async function createComment(
   projectId: string,
@@ -50,7 +43,7 @@ export async function createComment(
     commentId: comment.id,
   });
 
-  return serializeComment(comment);
+  return serializeDates(comment);
 }
 
 export async function listComments(
@@ -76,9 +69,10 @@ export async function listComments(
       },
     },
     orderBy: (c, { asc }) => [asc(c.createdAt)],
+    limit: 200,
   });
 
-  return result.map(serializeComment);
+  return result.map(serializeDates);
 }
 
 export async function updateComment(
@@ -110,7 +104,7 @@ export async function updateComment(
     .where(eq(comments.id, commentId))
     .returning();
 
-  return serializeComment(updated);
+  return serializeDates(updated);
 }
 
 export async function deleteComment(commentId: string, userId: string) {
@@ -160,8 +154,5 @@ export async function getActivity(
     limit: 100,
   });
 
-  return logs.map((log) => ({
-    ...log,
-    createdAt: log.createdAt?.toISOString() ?? null,
-  }));
+  return logs.map(serializeDates);
 }

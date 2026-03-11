@@ -4,7 +4,7 @@ import React from 'react';
 import type { IssueType } from '@arcadiux/shared/constants';
 import { cn } from '@/lib/utils';
 import { useGanttDrag } from '@/hooks/use-gantt-drag';
-import { getBarStyle, safeParseDate } from '@/lib/gantt-utils';
+import { getBarStyle, safeParseDate, getDeadlineStatus } from '@/lib/gantt-utils';
 
 const barColors: Record<IssueType, string> = {
   epic: 'bg-issue-epic',
@@ -20,6 +20,8 @@ interface GanttBarProps {
   type: IssueType;
   startDateStr: string;
   endDateStr: string;
+  updatedAt?: string | null;
+  statusCategory?: string | null;
   timelineStart: Date;
   timelineEnd: Date;
   dayWidthPx: number;
@@ -33,6 +35,8 @@ export function GanttBar({
   type,
   startDateStr,
   endDateStr,
+  updatedAt,
+  statusCategory,
   timelineStart,
   timelineEnd,
   dayWidthPx,
@@ -55,6 +59,8 @@ export function GanttBar({
 
   const baseStyle = getBarStyle(startDate, endDate, timelineStart, dayWidthPx);
   const style = previewStyle ?? baseStyle;
+  const isDone = statusCategory === 'done' || statusCategory === 'cancelled';
+  const deadline = getDeadlineStatus(endDateStr, isDone ? updatedAt : null);
 
   const handleClick = () => {
     if (!didDragRef.current) {
@@ -72,6 +78,7 @@ export function GanttBar({
       style={{
         left: style.left,
         width: Math.max(style.width, dayWidthPx),
+        borderLeft: deadline ? `4px solid ${deadline.color}` : undefined,
       }}
       onClick={handleClick}
     >
@@ -87,6 +94,14 @@ export function GanttBar({
       <span className="truncate px-2 text-[10px] font-medium">
         {issueKey}
       </span>
+
+      {/* Deadline indicator dot */}
+      {deadline && (
+        <span
+          className="mr-1.5 ml-auto h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: deadline.color }}
+        />
+      )}
 
       {/* Right drag handle */}
       <div

@@ -107,8 +107,15 @@ export default function RetroSessionPage() {
     membersNameMap[m.id] = m.fullName;
   });
 
-  // Current user ID (from JWT)
-  const currentUserId = ''; // Will be populated from token decode
+  // Current user
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<User>>('/api/auth/me');
+      return res.data;
+    },
+  });
+  const currentUserId = currentUser?.id ?? '';
 
   // Socket connection
   useEffect(() => {

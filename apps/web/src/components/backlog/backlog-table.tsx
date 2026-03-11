@@ -11,15 +11,11 @@ import { AvatarDisplay } from '@/components/shared/avatar-display';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useIssueModal } from '@/stores/use-issue-modal';
 import {
-  Zap,
-  BookOpen,
-  CheckSquare,
-  GitBranch,
-  Bug,
   ArrowUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { typeIcons, typeColors } from '@/lib/issue-utils';
 
 interface BacklogTableProps {
   issues: Issue[];
@@ -29,22 +25,6 @@ interface BacklogTableProps {
   sprints: Record<string, Sprint>;
   responsibles?: Record<string, Responsible>;
 }
-
-const typeIcons: Record<IssueType, React.ElementType> = {
-  epic: Zap,
-  story: BookOpen,
-  task: CheckSquare,
-  subtask: GitBranch,
-  bug: Bug,
-};
-
-const typeColors: Record<IssueType, string> = {
-  epic: 'text-violet-600',
-  story: 'text-green-600',
-  task: 'text-blue-600',
-  subtask: 'text-cyan-600',
-  bug: 'text-red-600',
-};
 
 type SortField = 'issueNumber' | 'title' | 'priority' | 'storyPoints' | 'type';
 type SortDirection = 'asc' | 'desc';
@@ -156,13 +136,13 @@ export function BacklogTable({
           <tbody>
             {sortedIssues.map((issue) => {
               const TypeIcon = typeIcons[issue.type as IssueType];
-              const status = statuses[issue.statusId];
+              const status = issue.statusId ? statuses[issue.statusId] : undefined;
               const assignee = issue.assigneeId
                 ? members[issue.assigneeId]
                 : null;
-              const responsible = issue.responsibleId && responsibles
-                ? responsibles[issue.responsibleId]
-                : null;
+              const responsibleNames = issue.responsibleIds
+                ?.map((id) => responsibles?.[id]?.fullName)
+                .filter(Boolean) as string[] | undefined;
 
               return (
                 <tr
@@ -188,7 +168,7 @@ export function BacklogTable({
                   </td>
                   <td className="px-4 py-3">
                     {issue.sprintId && sprints[issue.sprintId] ? (
-                      <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs font-medium">
+                      <span className="rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 text-xs font-medium">
                         {sprints[issue.sprintId].name}
                       </span>
                     ) : (
@@ -233,9 +213,9 @@ export function BacklogTable({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {responsible ? (
-                      <span className="text-xs text-muted-foreground">
-                        {responsible.fullName}
+                    {responsibleNames && responsibleNames.length > 0 ? (
+                      <span className="text-xs text-muted-foreground" title={responsibleNames.join(', ')}>
+                        {responsibleNames.join(', ')}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">

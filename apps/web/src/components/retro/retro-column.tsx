@@ -76,6 +76,7 @@ export function RetroColumn({
           size="icon"
           className="h-7 w-7"
           onClick={() => setIsAdding(true)}
+          aria-label={`Agregar nota a ${column.name}`}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -129,7 +130,7 @@ export function RetroColumn({
               note={note}
               voteCount={noteVotes.length}
               hasVoted={hasVoted}
-              authorName={members[note.authorId]}
+              authorName={note.authorId ? members[note.authorId] : undefined}
               onVote={onVote}
             />
           );

@@ -1,10 +1,11 @@
 import { Server as SocketIOServer } from "socket.io";
 import type { Server as HttpServer } from "node:http";
+import type { FastifyBaseLogger } from "fastify";
 import { config } from "../config/index.js";
 import { authenticateSocket } from "./ws-auth.js";
 import { registerRetroHandlers } from "../modules/retro/retro.ws-handler.js";
 
-export function setupWebSocket(httpServer: HttpServer): SocketIOServer {
+export function setupWebSocket(httpServer: HttpServer, log: FastifyBaseLogger): SocketIOServer {
   const io = new SocketIOServer(httpServer, {
     cors: {
       origin: config.CORS_ORIGIN.split(",").map((o) => o.trim()),
@@ -19,7 +20,7 @@ export function setupWebSocket(httpServer: HttpServer): SocketIOServer {
   retroNamespace.use(authenticateSocket);
 
   retroNamespace.on("connection", (socket) => {
-    console.log(
+    log.info(
       `WebSocket connected: ${socket.data.userId} (${socket.data.fullName})`,
     );
 
@@ -27,13 +28,13 @@ export function setupWebSocket(httpServer: HttpServer): SocketIOServer {
     registerRetroHandlers(io, socket as any);
 
     socket.on("disconnect", (reason) => {
-      console.log(
+      log.info(
         `WebSocket disconnected: ${socket.data.userId} (reason: ${reason})`,
       );
     });
 
     socket.on("error", (err) => {
-      console.error(`WebSocket error for user ${socket.data.userId}`, err);
+      log.error(err, `WebSocket error for user ${socket.data.userId}`);
     });
   });
 
@@ -52,6 +53,6 @@ export function setupWebSocket(httpServer: HttpServer): SocketIOServer {
     });
   });
 
-  console.log("WebSocket server initialized");
+  log.info("WebSocket server initialized");
   return io;
 }

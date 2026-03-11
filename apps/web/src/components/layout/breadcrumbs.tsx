@@ -19,6 +19,7 @@ const LABEL_MAP: Record<string, string> = {
   board: 'Tablero',
   backlog: 'Backlog',
   sprints: 'Sprints',
+  gantt: 'Gantt',
   reports: 'Reportes',
   retro: 'Retrospectiva',
   settings: 'Configuración',

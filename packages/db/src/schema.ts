@@ -78,8 +78,8 @@ export const users = pgTable("users", {
   fullName: varchar("full_name", { length: 255 }).notNull(),
   avatarUrl: text("avatar_url"),
   isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 // ---- projects -------------------------------------------------------------
@@ -90,10 +90,10 @@ export const projects = pgTable("projects", {
   key: varchar("key", { length: 5 }).unique().notNull(),
   description: text("description"),
   projectType: projectTypeEnum("project_type").notNull(),
-  ownerId: uuid("owner_id").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (t) => [index("idx_projects_owner").on(t.ownerId)]);
 
 // ---- projectMembers -------------------------------------------------------
 
@@ -107,55 +107,75 @@ export const projectMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: projectRoleEnum("role").notNull().default("member"),
-    joinedAt: timestamp("joined_at").defaultNow(),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.projectId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.userId] }),
+    index("idx_project_members_user").on(t.userId),
+  ],
 );
 
 // ---- workflowStatuses -----------------------------------------------------
 
-export const workflowStatuses = pgTable("workflow_statuses", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 50 }).notNull(),
-  category: statusCategoryEnum("category").notNull(),
-  position: integer("position").notNull(),
-  wipLimit: integer("wip_limit"),
-  isActive: boolean("is_active").notNull().default(true),
-});
+export const workflowStatuses = pgTable(
+  "workflow_statuses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 50 }).notNull(),
+    category: statusCategoryEnum("category").notNull(),
+    position: integer("position").notNull(),
+    wipLimit: integer("wip_limit"),
+    isActive: boolean("is_active").notNull().default(true),
+  },
+  (t) => [index("idx_workflow_statuses_project").on(t.projectId)],
+);
 
 // ---- workflowTransitions --------------------------------------------------
 
-export const workflowTransitions = pgTable("workflow_transitions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  fromStatusId: uuid("from_status_id")
-    .notNull()
-    .references(() => workflowStatuses.id, { onDelete: "cascade" }),
-  toStatusId: uuid("to_status_id")
-    .notNull()
-    .references(() => workflowStatuses.id, { onDelete: "cascade" }),
-});
+export const workflowTransitions = pgTable(
+  "workflow_transitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fromStatusId: uuid("from_status_id")
+      .notNull()
+      .references(() => workflowStatuses.id, { onDelete: "cascade" }),
+    toStatusId: uuid("to_status_id")
+      .notNull()
+      .references(() => workflowStatuses.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    unique("uq_wf_transition").on(t.projectId, t.fromStatusId, t.toStatusId),
+    index("idx_wf_transitions_project").on(t.projectId),
+    index("idx_wf_transitions_from").on(t.fromStatusId),
+    index("idx_wf_transitions_to").on(t.toStatusId),
+  ],
+);
 
 // ---- sprints --------------------------------------------------------------
 
-export const sprints = pgTable("sprints", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 255 }).notNull(),
-  goal: text("goal"),
-  status: sprintStatusEnum("status").notNull().default("planned"),
-  startDate: date("start_date"),
-  endDate: date("end_date"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const sprints = pgTable(
+  "sprints",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    goal: text("goal"),
+    status: sprintStatusEnum("status").notNull().default("planned"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_sprints_project").on(t.projectId)],
+);
 
 // ---- issues ---------------------------------------------------------------
 
@@ -170,12 +190,9 @@ export const issues = pgTable(
     type: issueTypeEnum("type").notNull(),
     title: varchar("title", { length: 500 }).notNull(),
     description: text("description"),
-    statusId: uuid("status_id").references(() => workflowStatuses.id),
+    statusId: uuid("status_id").references(() => workflowStatuses.id, { onDelete: "set null" }),
     priority: priorityLevelEnum("priority").notNull().default("medium"),
     assigneeId: uuid("assignee_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    responsibleId: uuid("responsible_id").references(() => responsibles.id, {
       onDelete: "set null",
     }),
     reporterId: uuid("reporter_id").references(() => users.id, {
@@ -191,8 +208,8 @@ export const issues = pgTable(
     endDate: date("end_date"),
     category: issueCategoryEnum("category").notNull().default("otros"),
     position: integer("position").notNull().default(0),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [
     unique("uq_issues_project_number").on(t.projectId, t.issueNumber),
@@ -201,37 +218,44 @@ export const issues = pgTable(
     index("idx_issues_project_backlog")
       .on(t.projectId, t.position)
       .where(sql`sprint_id IS NULL`),
+    index("idx_issues_assignee").on(t.assigneeId),
+    index("idx_issues_reporter").on(t.reporterId),
+    index("idx_issues_parent").on(t.parentId),
+    index("idx_issues_epic").on(t.epicId),
   ],
 );
 
-// Self-referencing foreign keys for issues (parentId, epicId)
-// These are handled via relations below; Drizzle does not require
-// .references() for self-refs when using the relations API, but we add
-// explicit SQL references via the `sql` helper in migrations if needed.
-
 // ---- responsibles ---------------------------------------------------------
 
-export const responsibles = pgTable("responsibles", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  fullName: varchar("full_name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }),
-  jobTitle: varchar("job_title", { length: 255 }),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const responsibles = pgTable(
+  "responsibles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fullName: varchar("full_name", { length: 255 }).notNull(),
+    email: varchar("email", { length: 255 }),
+    jobTitle: varchar("job_title", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_responsibles_project").on(t.projectId)],
+);
 
 // ---- labels ---------------------------------------------------------------
 
-export const labels = pgTable("labels", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 50 }).notNull(),
-  color: varchar("color", { length: 7 }).notNull(),
-});
+export const labels = pgTable(
+  "labels",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 50 }).notNull(),
+    color: varchar("color", { length: 7 }).notNull(),
+  },
+  (t) => [index("idx_labels_project").on(t.projectId)],
+);
 
 // ---- issueLabels ----------------------------------------------------------
 
@@ -245,40 +269,72 @@ export const issueLabels = pgTable(
       .notNull()
       .references(() => labels.id, { onDelete: "cascade" }),
   },
-  (t) => [primaryKey({ columns: [t.issueId, t.labelId] })],
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.labelId] }),
+    index("idx_issue_labels_label").on(t.labelId),
+  ],
+);
+
+// ---- issueResponsibles (many-to-many) ------------------------------------
+
+export const issueResponsibles = pgTable(
+  "issue_responsibles",
+  {
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    responsibleId: uuid("responsible_id")
+      .notNull()
+      .references(() => responsibles.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.responsibleId] }),
+    index("idx_issue_responsibles_responsible").on(t.responsibleId),
+  ],
 );
 
 // ---- comments -------------------------------------------------------------
 
-export const comments = pgTable("comments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  issueId: uuid("issue_id")
-    .notNull()
-    .references(() => issues.id, { onDelete: "cascade" }),
-  authorId: uuid("author_id").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  body: text("body").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const comments = pgTable(
+  "comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    index("idx_comments_issue").on(t.issueId),
+    index("idx_comments_author").on(t.authorId),
+  ],
+);
 
 // ---- attachments ----------------------------------------------------------
 
-export const attachments = pgTable("attachments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  issueId: uuid("issue_id")
-    .notNull()
-    .references(() => issues.id, { onDelete: "cascade" }),
-  uploadedBy: uuid("uploaded_by").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  fileName: varchar("file_name", { length: 255 }).notNull(),
-  fileUrl: text("file_url").notNull(),
-  fileSize: integer("file_size").notNull(),
-  mimeType: varchar("mime_type", { length: 100 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    fileUrl: text("file_url").notNull(),
+    fileSize: integer("file_size").notNull(),
+    mimeType: varchar("mime_type", { length: 100 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_attachments_issue").on(t.issueId)],
+);
 
 // ---- activityLog ----------------------------------------------------------
 
@@ -296,73 +352,93 @@ export const activityLog = pgTable(
     fieldName: varchar("field_name", { length: 50 }),
     oldValue: text("old_value"),
     newValue: text("new_value"),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [
     index("idx_activity_issue").on(t.issueId, t.createdAt),
+    index("idx_activity_user").on(t.userId),
   ],
 );
 
 // ---- refreshTokens --------------------------------------------------------
 
-export const refreshTokens = pgTable("refresh_tokens", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  tokenHash: varchar("token_hash", { length: 255 }).notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const refreshTokens = pgTable(
+  "refresh_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: varchar("token_hash", { length: 255 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    index("idx_refresh_tokens_hash").on(t.tokenHash),
+    index("idx_refresh_tokens_user").on(t.userId),
+  ],
+);
 
 // ---- retroBoards ----------------------------------------------------------
 
-export const retroBoards = pgTable("retro_boards", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  sprintId: uuid("sprint_id").references(() => sprints.id, {
-    onDelete: "set null",
-  }),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 255 }).notNull(),
-  template: varchar("template", { length: 50 }).notNull().default("mad_sad_glad"),
-  timerSeconds: integer("timer_seconds").notNull().default(300),
-  timerRunning: boolean("timer_running").notNull().default(false),
-  timerStartedAt: timestamp("timer_started_at"),
-  maxVotes: integer("max_votes").notNull().default(3),
-  isAnonymous: boolean("is_anonymous").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const retroBoards = pgTable(
+  "retro_boards",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sprintId: uuid("sprint_id").references(() => sprints.id, {
+      onDelete: "set null",
+    }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    template: varchar("template", { length: 50 }).notNull().default("mad_sad_glad"),
+    timerSeconds: integer("timer_seconds").notNull().default(300),
+    timerRunning: boolean("timer_running").notNull().default(false),
+    timerStartedAt: timestamp("timer_started_at", { withTimezone: true }),
+    maxVotes: integer("max_votes").notNull().default(3),
+    isAnonymous: boolean("is_anonymous").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_retro_boards_project").on(t.projectId)],
+);
 
 // ---- retroColumns ---------------------------------------------------------
 
-export const retroColumns = pgTable("retro_columns", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  boardId: uuid("board_id")
-    .notNull()
-    .references(() => retroBoards.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 100 }).notNull(),
-  position: integer("position").notNull(),
-  color: varchar("color", { length: 7 }).notNull(),
-});
+export const retroColumns = pgTable(
+  "retro_columns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    boardId: uuid("board_id")
+      .notNull()
+      .references(() => retroBoards.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    position: integer("position").notNull(),
+    color: varchar("color", { length: 7 }).notNull(),
+  },
+  (t) => [index("idx_retro_columns_board").on(t.boardId)],
+);
 
 // ---- retroNotes -----------------------------------------------------------
 
-export const retroNotes = pgTable("retro_notes", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  columnId: uuid("column_id")
-    .notNull()
-    .references(() => retroColumns.id, { onDelete: "cascade" }),
-  authorId: uuid("author_id").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  text: text("text").notNull(),
-  color: varchar("color", { length: 7 }),
-  position: integer("position").notNull().default(0),
-  isAnonymous: boolean("is_anonymous").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const retroNotes = pgTable(
+  "retro_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    columnId: uuid("column_id")
+      .notNull()
+      .references(() => retroColumns.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    text: text("text").notNull(),
+    color: varchar("color", { length: 7 }),
+    position: integer("position").notNull().default(0),
+    isAnonymous: boolean("is_anonymous").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("idx_retro_notes_column").on(t.columnId)],
+);
 
 // ---- retroVotes -----------------------------------------------------------
 
@@ -397,7 +473,11 @@ export const retroActionItems = pgTable("retro_action_items", {
     onDelete: "set null",
   }),
   isDone: boolean("is_done").notNull().default(false),
-});
+}, (t) => [
+  index("idx_retro_action_items_board").on(t.boardId),
+  index("idx_retro_action_items_assignee").on(t.assigneeId),
+  index("idx_retro_action_items_issue").on(t.issueId),
+]);
 
 // ---------------------------------------------------------------------------
 // Relations
@@ -517,10 +597,7 @@ export const issuesRelations = relations(issues, ({ one, many }) => ({
     references: [users.id],
     relationName: "issueAssignee",
   }),
-  responsible: one(responsibles, {
-    fields: [issues.responsibleId],
-    references: [responsibles.id],
-  }),
+  issueResponsibles: many(issueResponsibles),
   reporter: one(users, {
     fields: [issues.reporterId],
     references: [users.id],
@@ -566,10 +643,21 @@ export const responsiblesRelations = relations(responsibles, ({ one, many }) => 
     fields: [responsibles.projectId],
     references: [projects.id],
   }),
-  issues: many(issues),
+  issueResponsibles: many(issueResponsibles),
 }));
 
 // ---- issueLabels relations ------------------------------------------------
+
+export const issueResponsiblesRelations = relations(issueResponsibles, ({ one }) => ({
+  issue: one(issues, {
+    fields: [issueResponsibles.issueId],
+    references: [issues.id],
+  }),
+  responsible: one(responsibles, {
+    fields: [issueResponsibles.responsibleId],
+    references: [responsibles.id],
+  }),
+}));
 
 export const issueLabelsRelations = relations(issueLabels, ({ one }) => ({
   issue: one(issues, {

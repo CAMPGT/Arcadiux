@@ -35,7 +35,7 @@ export function AiSuggestionCard({
                 Sugerencia IA
               </span>
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                {type}
+                {type === 'story' ? 'Historia' : type === 'risk' ? 'Riesgo' : type === 'description' ? 'Descripción' : type}
               </span>
             </div>
             <h4 className="text-sm font-semibold">{title}</h4>

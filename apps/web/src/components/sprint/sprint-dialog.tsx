@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createSprintSchema, type CreateSprintInput } from '@arcadiux/shared/validators';
@@ -35,9 +35,14 @@ export function SprintDialog({
 }: SprintDialogProps) {
   const isEditing = !!sprint;
 
-  const toDateString = (d: Date | string) => {
-    const s = typeof d === 'string' ? d : d.toISOString();
-    return s.slice(0, 10);
+  const toDateString = (d: Date | string | null) => {
+    if (!d) return '';
+    if (typeof d === 'string') return d.slice(0, 10);
+    // Use local date parts to avoid timezone shift
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   };
 
   const {
@@ -47,20 +52,32 @@ export function SprintDialog({
     reset,
   } = useForm<CreateSprintInput>({
     resolver: zodResolver(createSprintSchema),
-    defaultValues: sprint
-      ? {
-          name: sprint.name,
-          goal: sprint.goal ?? undefined,
-          startDate: toDateString(sprint.startDate),
-          endDate: toDateString(sprint.endDate),
-        }
-      : {
-          name: '',
-          goal: '',
-          startDate: toDateString(new Date()),
-          endDate: toDateString(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
-        },
+    defaultValues: {
+      name: '',
+      goal: '',
+      startDate: toDateString(new Date()),
+      endDate: toDateString(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
+    },
   });
+
+  // Reset form values whenever the sprint prop changes (open for edit vs create)
+  useEffect(() => {
+    if (sprint) {
+      reset({
+        name: sprint.name,
+        goal: sprint.goal ?? undefined,
+        startDate: toDateString(sprint.startDate),
+        endDate: toDateString(sprint.endDate),
+      });
+    } else {
+      reset({
+        name: '',
+        goal: '',
+        startDate: toDateString(new Date()),
+        endDate: toDateString(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
+      });
+    }
+  }, [sprint, reset]);
 
   const handleFormSubmit = (data: CreateSprintInput) => {
     onSubmit(data);

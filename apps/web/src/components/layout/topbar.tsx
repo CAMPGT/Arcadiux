@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { Search, Menu, LogOut } from 'lucide-react';
 import { Breadcrumbs } from './breadcrumbs';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
   CommandDialog,
   CommandEmpty,
@@ -13,8 +14,9 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, clearTokensAndLogout } from '@/lib/api-client';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useSidebar } from '@/stores/use-sidebar';
 import type { ApiResponse, Issue, Project } from '@arcadiux/shared/types';
 
 interface SearchResult {
@@ -28,6 +30,12 @@ export function Topbar() {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 300);
   const [results, setResults] = useState<SearchResult>({ issues: [], projects: [] });
+  const { toggleMobile } = useSidebar();
+
+  const handleLogout = async () => {
+    await clearTokensAndLogout();
+    router.push('/login');
+  };
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -63,14 +71,39 @@ export function Topbar() {
   }, [debouncedQuery, performSearch]);
 
   return (
-    <header className="flex h-14 items-center gap-4 border-b bg-background px-6">
+    <header className="flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6">
+      {/* Mobile hamburger */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 md:hidden"
+        onClick={toggleMobile}
+        aria-label="Abrir menú"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+
       <Breadcrumbs />
 
       <div className="ml-auto flex items-center gap-2">
+        <ThemeToggle />
+
+        {/* Mobile: icon-only search button */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 md:hidden"
+          onClick={() => setOpen(true)}
+          aria-label="Buscar"
+        >
+          <Search className="h-4 w-4" />
+        </Button>
+
+        {/* Desktop: full search button */}
         <Button
           variant="outline"
           size="sm"
-          className="relative h-9 w-64 justify-start text-sm text-muted-foreground"
+          className="relative h-9 w-64 justify-start text-sm text-muted-foreground hidden md:flex"
           onClick={() => setOpen(true)}
         >
           <Search className="mr-2 h-4 w-4" />
@@ -78,6 +111,18 @@ export function Topbar() {
           <kbd className="pointer-events-none absolute right-2 top-2 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
             <span className="text-xs">Ctrl</span>K
           </kbd>
+        </Button>
+
+        {/* Logout */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 text-muted-foreground hover:text-destructive"
+          onClick={handleLogout}
+          title="Cerrar sesión"
+          aria-label="Cerrar sesión"
+        >
+          <LogOut className="h-4 w-4" />
         </Button>
       </div>
 

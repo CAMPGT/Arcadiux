@@ -11,14 +11,7 @@ import {
 } from "@arcadiux/db/schema";
 import type { CreateRetroInput, CreateRetroNoteInput, UpdateRetroNoteInput } from "@arcadiux/shared/validators";
 import { DEFAULT_RETRO_TEMPLATES, type RetroTemplate } from "@arcadiux/shared/constants";
-
-function serializeRetro(board: any) {
-  return {
-    ...board,
-    createdAt: board.createdAt?.toISOString?.() ?? board.createdAt ?? null,
-    timerStartedAt: board.timerStartedAt?.toISOString?.() ?? board.timerStartedAt ?? null,
-  };
-}
+import { serializeDates } from "../../utils/serialize.js";
 
 export async function createRetro(
   projectId: string,
@@ -58,7 +51,7 @@ export async function createRetro(
       }
     }
 
-    return serializeRetro(board);
+    return serializeDates(board);
   });
 }
 
@@ -66,6 +59,7 @@ export async function listRetros(projectId: string) {
   const boards = await db.query.retroBoards.findMany({
     where: eq(retroBoards.projectId, projectId),
     orderBy: (rb, { desc }) => [desc(rb.createdAt)],
+    limit: 50,
     with: {
       sprint: {
         columns: { id: true, name: true, status: true },
@@ -73,7 +67,7 @@ export async function listRetros(projectId: string) {
     },
   });
 
-  return boards.map(serializeRetro);
+  return boards.map(serializeDates);
 }
 
 export async function getRetro(projectId: string, boardId: string) {
@@ -129,7 +123,7 @@ export async function getRetro(projectId: string, boardId: string) {
     });
   }
 
-  return serializeRetro(board);
+  return serializeDates(board);
 }
 
 export async function updateRetro(
@@ -161,7 +155,7 @@ export async function updateRetro(
     .where(eq(retroBoards.id, boardId))
     .returning();
 
-  return serializeRetro(updated);
+  return serializeDates(updated);
 }
 
 export async function deleteRetro(projectId: string, boardId: string) {
@@ -206,10 +200,7 @@ export async function createNote(
     })
     .returning();
 
-  return {
-    ...note,
-    createdAt: note.createdAt?.toISOString() ?? null,
-  };
+  return serializeDates(note);
 }
 
 export async function updateNote(
@@ -233,10 +224,7 @@ export async function updateNote(
     .where(eq(retroNotes.id, noteId))
     .returning();
 
-  return {
-    ...updated,
-    createdAt: updated.createdAt?.toISOString() ?? null,
-  };
+  return serializeDates(updated);
 }
 
 export async function deleteNote(noteId: string) {
@@ -274,72 +262,72 @@ export async function moveNote(
     .where(eq(retroNotes.id, noteId))
     .returning();
 
-  return {
-    ...updated,
-    createdAt: updated.createdAt?.toISOString() ?? null,
-  };
+  return serializeDates(updated);
 }
 
 export async function toggleVote(noteId: string, userId: string) {
-  const existing = await db.query.retroVotes.findFirst({
-    where: and(
-      eq(retroVotes.noteId, noteId),
-      eq(retroVotes.userId, userId),
-    ),
-  });
+  return await db.transaction(async (tx) => {
+    // Lock the note row to serialize concurrent vote attempts
+    const [noteRow] = await tx.execute(sql`
+      SELECT rn.id, rc.board_id, rb.max_votes
+      FROM retro_notes rn
+      JOIN retro_columns rc ON rc.id = rn.column_id
+      JOIN retro_boards rb ON rb.id = rc.board_id
+      WHERE rn.id = ${noteId}
+      FOR UPDATE
+    `);
 
-  if (existing) {
-    // Remove vote
-    await db
-      .delete(retroVotes)
+    if (!noteRow) {
+      throw Object.assign(new Error("Note not found"), { statusCode: 404 });
+    }
+
+    const existing = await tx
+      .select()
+      .from(retroVotes)
       .where(
         and(
           eq(retroVotes.noteId, noteId),
           eq(retroVotes.userId, userId),
         ),
       );
-    return { voted: false };
-  } else {
-    // Check max votes for the board
-    const note = await db.query.retroNotes.findFirst({
-      where: eq(retroNotes.id, noteId),
-      with: {
-        column: {
-          with: {
-            board: true,
-          },
-        },
-      },
-    });
 
-    if (note) {
-      const boardId = note.column.board.id;
-      const maxVotes = note.column.board.maxVotes;
-
-      // Count current votes by this user on this board
-      const voteCount = await db.execute(sql`
-        SELECT COUNT(*) as count
-        FROM retro_votes rv
-        JOIN retro_notes rn ON rn.id = rv.note_id
-        JOIN retro_columns rc ON rc.id = rn.column_id
-        WHERE rc.board_id = ${boardId} AND rv.user_id = ${userId}
-      `);
-
-      const currentVotes = Number(
-        (voteCount as any[])[0]?.count ?? 0,
-      );
-
-      if (currentVotes >= maxVotes) {
-        throw Object.assign(
-          new Error(`Maximum votes (${maxVotes}) reached for this board`),
-          { statusCode: 400 },
+    if (existing.length > 0) {
+      // Remove vote
+      await tx
+        .delete(retroVotes)
+        .where(
+          and(
+            eq(retroVotes.noteId, noteId),
+            eq(retroVotes.userId, userId),
+          ),
         );
-      }
+      return { voted: false };
     }
 
-    await db.insert(retroVotes).values({ noteId, userId });
+    // Count current votes by this user on this board (inside transaction)
+    const boardId = (noteRow as any).board_id;
+    const maxVotes = Number((noteRow as any).max_votes);
+
+    const [voteCount] = await tx.execute(sql`
+      SELECT COUNT(*) as count
+      FROM retro_votes rv
+      JOIN retro_notes rn ON rn.id = rv.note_id
+      JOIN retro_columns rc ON rc.id = rn.column_id
+      WHERE rc.board_id = ${boardId} AND rv.user_id = ${userId}
+    `);
+
+    const currentVotes = Number((voteCount as any)?.count ?? 0);
+
+    if (currentVotes >= maxVotes) {
+      throw Object.assign(
+        new Error(`Maximum votes (${maxVotes}) reached for this board`),
+        { statusCode: 400 },
+      );
+    }
+
+    await tx.insert(retroVotes).values({ noteId, userId });
     return { voted: true };
-  }
+  });
 }
 
 export async function startTimer(boardId: string) {
@@ -352,7 +340,7 @@ export async function startTimer(boardId: string) {
     .where(eq(retroBoards.id, boardId))
     .returning();
 
-  return serializeRetro(updated);
+  return serializeDates(updated);
 }
 
 export async function stopTimer(boardId: string) {
@@ -365,7 +353,7 @@ export async function stopTimer(boardId: string) {
     .where(eq(retroBoards.id, boardId))
     .returning();
 
-  return serializeRetro(updated);
+  return serializeDates(updated);
 }
 
 export async function convertNoteToActionItem(
@@ -449,9 +437,5 @@ export async function convertActionItemToIssue(
     .set({ issueId: issue.id })
     .where(eq(retroActionItems.id, actionItemId));
 
-  return {
-    ...issue,
-    createdAt: issue.createdAt?.toISOString() ?? null,
-    updatedAt: issue.updatedAt?.toISOString() ?? null,
-  };
+  return serializeDates(issue);
 }

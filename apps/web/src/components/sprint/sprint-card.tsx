@@ -19,9 +19,9 @@ interface SprintCardProps {
 }
 
 const statusStyles: Record<SprintStatus, string> = {
-  planned: 'bg-gray-100 text-gray-700 border-gray-300',
-  active: 'bg-blue-100 text-blue-700 border-blue-300',
-  completed: 'bg-green-100 text-green-700 border-green-300',
+  planned: 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700',
+  active: 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+  completed: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
 };
 
 const statusLabels: Record<SprintStatus, string> = {
@@ -71,8 +71,8 @@ export function SprintCard({
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
           <Calendar className="h-3.5 w-3.5" />
           <span>
-            {formatDate(sprint.startDate, 'MMM d')} -{' '}
-            {formatDate(sprint.endDate, 'MMM d, yyyy')}
+            {sprint.startDate ? formatDate(sprint.startDate, 'MMM d') : '—'} -{' '}
+            {sprint.endDate ? formatDate(sprint.endDate, 'MMM d, yyyy') : '—'}
           </span>
         </div>
 

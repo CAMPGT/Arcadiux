@@ -102,6 +102,61 @@ export function safeParseDate(dateStr: string | null): Date | null {
   }
 }
 
+export type DeadlineStatus = 'on_time' | 'at_risk' | 'overdue';
+
+export interface DeadlineInfo {
+  status: DeadlineStatus;
+  label: string;
+  color: string;       // hex color (e.g. '#22c55e')
+  bgLight: string;     // light bg hex (e.g. '#dcfce7')
+  textDark: string;    // dark text hex (e.g. '#15803d')
+  daysOverdue: number; // positive when overdue, 0 otherwise
+}
+
+const deadlineConfig: Record<DeadlineStatus, Omit<DeadlineInfo, 'status' | 'daysOverdue'>> = {
+  on_time: {
+    label: 'En tiempo',
+    color: '#22c55e',
+    bgLight: '#dcfce7',
+    textDark: '#15803d',
+  },
+  at_risk: {
+    label: 'Por vencer',
+    color: '#eab308',
+    bgLight: '#fef9c3',
+    textDark: '#a16207',
+  },
+  overdue: {
+    label: 'Retrasado',
+    color: '#ef4444',
+    bgLight: '#fee2e2',
+    textDark: '#b91c1c',
+  },
+};
+
+/**
+ * @param endDate - issue end/due date
+ * @param referenceDate - date to compare against (defaults to today).
+ *   Pass `updatedAt` for issues in done/cancelled status.
+ */
+export function getDeadlineStatus(endDate: string | null, referenceDate?: string | null): DeadlineInfo | null {
+  if (!endDate) return null;
+  const ref = referenceDate ? parseISO(referenceDate) : new Date();
+  ref.setHours(0, 0, 0, 0);
+  const end = parseISO(endDate);
+  end.setHours(0, 0, 0, 0);
+  const diffDaysVal = Math.ceil((end.getTime() - ref.getTime()) / (1000 * 60 * 60 * 24));
+
+  let status: DeadlineStatus;
+  if (diffDaysVal <= 0) status = 'overdue';
+  else if (diffDaysVal <= 3) status = 'at_risk';
+  else status = 'on_time';
+
+  const daysOverdue = status === 'overdue' ? Math.abs(diffDaysVal) : 0;
+
+  return { status, ...deadlineConfig[status], daysOverdue };
+}
+
 export function computeTimelineRange(
   dates: (Date | null)[],
   paddingDays: number = 3,

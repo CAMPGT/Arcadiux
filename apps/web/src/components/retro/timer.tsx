@@ -60,8 +60,8 @@ export function Timer({
       <div
         className={cn(
           'rounded-lg px-4 py-2 font-mono text-2xl font-bold tabular-nums',
-          isExpired && 'bg-red-100 text-red-700',
-          isWarning && !isExpired && 'bg-yellow-100 text-yellow-700',
+          isExpired && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+          isWarning && !isExpired && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
           !isWarning && !isExpired && 'bg-muted text-foreground',
         )}
       >
@@ -72,6 +72,7 @@ export function Timer({
         size="icon"
         onClick={onToggle}
         className="h-10 w-10"
+        aria-label={isRunning ? 'Pausar temporizador' : 'Iniciar temporizador'}
       >
         {isRunning ? (
           <Pause className="h-4 w-4" />

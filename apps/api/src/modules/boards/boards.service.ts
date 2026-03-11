@@ -54,31 +54,38 @@ export async function getBoardView(
     activeSprintId = activeSprint?.id;
   }
 
-  // Build the board columns
-  const columns: BoardColumn[] = [];
+  // Single query for all board issues (eliminates N+1 per column)
+  const conditions = [eq(issues.projectId, projectId)];
+  if (activeSprintId) {
+    conditions.push(eq(issues.sprintId, activeSprintId));
+  }
 
-  for (const status of statuses) {
-    const conditions = [
-      eq(issues.projectId, projectId),
-      eq(issues.statusId, status.id),
-    ];
-
-    // If we have an active sprint, filter by it
-    if (activeSprintId) {
-      conditions.push(eq(issues.sprintId, activeSprintId));
-    }
-
-    const statusIssues = await db.query.issues.findMany({
-      where: and(...conditions),
-      with: {
-        assignee: {
-          columns: { id: true, email: true, fullName: true, avatarUrl: true },
-        },
+  const allIssues = await db.query.issues.findMany({
+    where: and(...conditions),
+    with: {
+      assignee: {
+        columns: { id: true, email: true, fullName: true, avatarUrl: true },
       },
-      orderBy: (i, { asc }) => [asc(i.position)],
-    });
+    },
+    orderBy: (i, { asc }) => [asc(i.position)],
+  });
 
-    columns.push({
+  // Group issues by statusId
+  const issuesByStatus = new Map<string, typeof allIssues>();
+  for (const issue of allIssues) {
+    if (!issue.statusId) continue;
+    const list = issuesByStatus.get(issue.statusId);
+    if (list) {
+      list.push(issue);
+    } else {
+      issuesByStatus.set(issue.statusId, [issue]);
+    }
+  }
+
+  // Build columns from statuses + grouped issues
+  const columns: BoardColumn[] = statuses.map((status) => {
+    const statusIssues = issuesByStatus.get(status.id) ?? [];
+    return {
       status: {
         id: status.id,
         name: status.name,
@@ -97,8 +104,8 @@ export async function getBoardView(
         assignee: i.assignee,
       })),
       issueCount: statusIssues.length,
-    });
-  }
+    };
+  });
 
   return columns;
 }

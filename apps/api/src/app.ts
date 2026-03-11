@@ -3,7 +3,11 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import jwt from "@fastify/jwt";
+import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import { resolve } from "node:path";
+import { mkdirSync } from "node:fs";
 import {
   serializerCompiler,
   validatorCompiler,
@@ -51,26 +55,31 @@ export async function buildApp() {
     credentials: true,
   });
 
+  // CSP is intentionally disabled for this API — it only serves JSON.
+  // Browser-facing CSP is enforced in the Next.js frontend (next.config.ts).
   await app.register(helmet, {
     contentSecurityPolicy: false,
   });
 
+  const isTest = process.env.NODE_ENV === "test";
   await app.register(rateLimit, {
-    max: 100,
-    timeWindow: "1 minute",
+    max: isTest ? 10000 : config.RATE_LIMIT_MAX,
+    timeWindow: config.RATE_LIMIT_WINDOW,
   });
+
+  await app.register(cookie);
 
   await app.register(jwt, {
     secret: config.JWT_SECRET,
     sign: {
-      expiresIn: "15m",
+      expiresIn: config.JWT_ACCESS_EXPIRES_IN,
     },
   });
 
   await app.register(multipart, {
     limits: {
-      fileSize: 10 * 1024 * 1024, // 10 MB
-      files: 5,
+      fileSize: config.UPLOAD_MAX_FILE_SIZE,
+      files: config.UPLOAD_MAX_FILES,
     },
   });
 
@@ -100,11 +109,20 @@ export async function buildApp() {
     { prefix: "/api/v1" },
   );
 
+  // Serve local uploads
+  const uploadsDir = resolve(process.cwd(), "uploads");
+  mkdirSync(uploadsDir, { recursive: true });
+  await app.register(fastifyStatic, {
+    root: uploadsDir,
+    prefix: "/uploads/",
+    decorateReply: false,
+  });
+
   // Health check
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
 
   // Setup internal event handlers for activity logging
-  setupEventHandlers();
+  setupEventHandlers(app.log);
 
   return app;
 }

@@ -29,30 +29,27 @@ import {
   X,
   ChevronDown,
   ChevronRight,
-  Zap,
-  BookOpen,
   CheckSquare,
-  GitBranch,
-  Bug,
   Loader2,
+  ArrowRightLeft,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-
-const typeIcons: Record<IssueType, React.ElementType> = {
-  epic: Zap,
-  story: BookOpen,
-  task: CheckSquare,
-  subtask: GitBranch,
-  bug: Bug,
-};
-
-const typeColors: Record<IssueType, string> = {
-  epic: 'text-violet-600',
-  story: 'text-green-600',
-  task: 'text-blue-600',
-  subtask: 'text-cyan-600',
-  bug: 'text-red-600',
-};
+import { typeIcons, typeColors } from '@/lib/issue-utils';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 export default function SprintsPage() {
   const params = useParams<{ projectId: string }>();
@@ -63,6 +60,8 @@ export default function SprintsPage() {
   const [expandedSprintId, setExpandedSprintId] = useState<string | null>(null);
   const [addIssuesSprintId, setAddIssuesSprintId] = useState<string | null>(null);
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
+  const [confirmCompleteSprintId, setConfirmCompleteSprintId] = useState<string | null>(null);
+  const [moveDestination, setMoveDestination] = useState<'backlog' | string>('backlog');
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -175,13 +174,15 @@ export default function SprintsPage() {
   });
 
   const completeSprintMutation = useMutation({
-    mutationFn: async (sprintId: string) => {
+    mutationFn: async ({ sprintId, moveToSprintId }: { sprintId: string; moveToSprintId?: string }) => {
       return apiClient.post<ApiResponse<Sprint>>(
         `/api/projects/${projectId}/sprints/${sprintId}/complete`,
+        moveToSprintId ? { moveToSprintId } : undefined,
       );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId, 'sprints'] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId, 'issues'] });
       toast.success('Sprint completado');
     },
     onError: () => { toast.error('Error al completar el sprint'); },
@@ -210,12 +211,30 @@ export default function SprintsPage() {
     setEditingSprint(null);
   };
 
+  // Sprints activos y planificados (destinos válidos para mover issues)
+  const moveTargetSprints = useMemo(
+    () => sprints?.filter((s) => s.status === 'active' || s.status === 'planned') ?? [],
+    [sprints],
+  );
+
   const handleRemoveIssue = (issueId: string) => {
     assignIssueMutation.mutate(
       { issueId, sprintId: null },
       {
         onSuccess: () => toast.success('Issue removido del sprint'),
         onError: () => toast.error('Error al remover issue'),
+      },
+    );
+  };
+
+  const handleMoveIssue = (issueId: string, targetSprintId: string) => {
+    const targetSprint = sprints?.find((s) => s.id === targetSprintId);
+    assignIssueMutation.mutate(
+      { issueId, sprintId: targetSprintId },
+      {
+        onSuccess: () =>
+          toast.success(`Issue movido a ${targetSprint?.name ?? 'sprint'}`),
+        onError: () => toast.error('Error al mover issue'),
       },
     );
   };
@@ -252,7 +271,7 @@ export default function SprintsPage() {
 
   const getSprintMetrics = (sprint: Sprint) => {
     const sprintIssues = getSprintIssues(sprint.id);
-    const completedIssues = sprintIssues.filter((i) => doneStatusIds.has(i.statusId));
+    const completedIssues = sprintIssues.filter((i) => i.statusId != null && doneStatusIds.has(i.statusId));
     const totalPoints = sprintIssues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
     const completedPoints = completedIssues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
     return {
@@ -266,6 +285,21 @@ export default function SprintsPage() {
   const activeSprints = sprints?.filter((s) => s.status === 'active') ?? [];
   const plannedSprints = sprints?.filter((s) => s.status === 'planned') ?? [];
   const completedSprints = sprints?.filter((s) => s.status === 'completed') ?? [];
+
+  // Incomplete issues for the sprint about to be completed
+  const completeSprintIncompleteIssues = useMemo(() => {
+    if (!confirmCompleteSprintId) return [];
+    const sprintIssues = issues?.filter((i) => i.sprintId === confirmCompleteSprintId) ?? [];
+    return sprintIssues.filter((i) => !i.statusId || !doneStatusIds.has(i.statusId));
+  }, [confirmCompleteSprintId, issues, doneStatusIds]);
+
+  // Available destination sprints (active or planned, excluding the one being completed)
+  const destinationSprints = useMemo(
+    () => sprints?.filter((s) =>
+      (s.status === 'active' || s.status === 'planned') && s.id !== confirmCompleteSprintId
+    ) ?? [],
+    [sprints, confirmCompleteSprintId],
+  );
 
   // --- Issue list renderer ---
 
@@ -289,7 +323,7 @@ export default function SprintsPage() {
               <div className="divide-y">
                 {sprintIssues.map((issue) => {
                   const TypeIcon = typeIcons[issue.type as IssueType] ?? CheckSquare;
-                  const status = statusesMap[issue.statusId];
+                  const status = issue.statusId ? statusesMap[issue.statusId] : undefined;
                   return (
                     <div
                       key={issue.id}
@@ -299,7 +333,7 @@ export default function SprintsPage() {
                       <span className="text-xs font-medium text-muted-foreground shrink-0">
                         {getIssueKey(project?.key ?? '', issue.issueNumber)}
                       </span>
-                      <span className="text-sm flex-1 truncate">{issue.title}</span>
+                      <span className="text-sm flex-1 truncate" title={issue.title}>{issue.title}</span>
                       {status && (
                         <StatusBadge name={status.name} category={status.category} />
                       )}
@@ -310,16 +344,46 @@ export default function SprintsPage() {
                         </span>
                       )}
                       {showActions && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleRemoveIssue(issue.id)}
-                          disabled={assignIssueMutation.isPending}
-                          title="Quitar del sprint"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {moveTargetSprints.filter((s) => s.id !== sprint.id).length > 0 && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  disabled={assignIssueMutation.isPending}
+                                  title="Mover a otro sprint"
+                                >
+                                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {moveTargetSprints
+                                  .filter((s) => s.id !== sprint.id)
+                                  .map((target) => (
+                                    <DropdownMenuItem
+                                      key={target.id}
+                                      onClick={() => handleMoveIssue(issue.id, target.id)}
+                                    >
+                                      {target.name}
+                                      {target.status === 'active' ? ' (Activo)' : ''}
+                                    </DropdownMenuItem>
+                                  ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleRemoveIssue(issue.id)}
+                            disabled={assignIssueMutation.isPending}
+                            title="Quitar del sprint"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       )}
                     </div>
                   );
@@ -404,8 +468,8 @@ export default function SprintsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-20" aria-busy="true">
+          <LoadingSpinner />
         </div>
       ) : (
         <Tabs defaultValue="planned">
@@ -430,7 +494,7 @@ export default function SprintsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => completeSprintMutation.mutate(sprint.id)}
+                      onClick={() => setConfirmCompleteSprintId(sprint.id)}
                       disabled={completeSprintMutation.isPending}
                     >
                       Completar Sprint
@@ -492,6 +556,107 @@ export default function SprintsPage() {
         isLoading={createSprintMutation.isPending || updateSprintMutation.isPending}
       />
 
+      {/* Confirm Complete Sprint Dialog */}
+      <Dialog
+        open={!!confirmCompleteSprintId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmCompleteSprintId(null);
+            setMoveDestination('backlog');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Completar Sprint</DialogTitle>
+            <DialogDescription>
+              {completeSprintIncompleteIssues.length > 0 ? (
+                <>
+                  Hay <strong>{completeSprintIncompleteIssues.length} issue{completeSprintIncompleteIssues.length !== 1 ? 's' : ''} sin completar</strong> en este sprint.
+                  Elige qué hacer con ellos antes de cerrar el sprint.
+                </>
+              ) : (
+                'Todos los issues están completados. ¿Deseas cerrar el sprint?'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {completeSprintIncompleteIssues.length > 0 && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Mover issues incompletos a:</Label>
+                <Select
+                  value={moveDestination}
+                  onValueChange={setMoveDestination}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="backlog">Backlog (sin sprint)</SelectItem>
+                    {destinationSprints.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} {s.status === 'active' ? '(Activo)' : '(Planificado)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-md border max-h-40 overflow-y-auto">
+                <div className="divide-y">
+                  {completeSprintIncompleteIssues.map((issue) => {
+                    const TypeIcon = typeIcons[issue.type as IssueType] ?? CheckSquare;
+                    const status = issue.statusId ? statusesMap[issue.statusId] : undefined;
+                    return (
+                      <div key={issue.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                        <TypeIcon className={cn('h-3.5 w-3.5 shrink-0', typeColors[issue.type as IssueType])} />
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {getIssueKey(project?.key ?? '', issue.issueNumber)}
+                        </span>
+                        <span className="flex-1 truncate">{issue.title}</span>
+                        {status && <StatusBadge name={status.name} category={status.category} />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmCompleteSprintId(null);
+                setMoveDestination('backlog');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirmCompleteSprintId) {
+                  completeSprintMutation.mutate({
+                    sprintId: confirmCompleteSprintId,
+                    moveToSprintId: moveDestination !== 'backlog' ? moveDestination : undefined,
+                  });
+                  setConfirmCompleteSprintId(null);
+                  setMoveDestination('backlog');
+                }
+              }}
+              disabled={completeSprintMutation.isPending}
+            >
+              {completeSprintMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Completar Sprint
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Issues Dialog */}
       <Dialog
         open={!!addIssuesSprintId}
@@ -515,7 +680,7 @@ export default function SprintsPage() {
               <div className="divide-y">
                 {backlogIssues.map((issue) => {
                   const TypeIcon = typeIcons[issue.type as IssueType] ?? CheckSquare;
-                  const status = statusesMap[issue.statusId];
+                  const status = issue.statusId ? statusesMap[issue.statusId] : undefined;
                   const isSelected = selectedIssueIds.has(issue.id);
                   return (
                     <label
@@ -533,7 +698,7 @@ export default function SprintsPage() {
                       <span className="text-xs font-medium text-muted-foreground shrink-0">
                         {getIssueKey(project?.key ?? '', issue.issueNumber)}
                       </span>
-                      <span className="text-sm flex-1 truncate">{issue.title}</span>
+                      <span className="text-sm flex-1 truncate" title={issue.title}>{issue.title}</span>
                       {status && (
                         <StatusBadge name={status.name} category={status.category} />
                       )}

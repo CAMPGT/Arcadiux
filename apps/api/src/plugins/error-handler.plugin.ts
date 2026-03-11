@@ -60,14 +60,23 @@ async function errorHandlerPluginFn(fastify: FastifyInstance) {
       });
     }
 
+    // PostgreSQL unique constraint violation
+    if ((error as any).code === "23505") {
+      return reply.code(409).send({
+        success: false,
+        message: "A record with that value already exists",
+      });
+    }
+
     // Generic server error
     request.log.error(error, "Unhandled error");
+    const aggMessages = (error as any).errors?.map((e: Error) => e.message)?.join("; ") ?? "";
     return reply.code(fastifyError.statusCode || 500).send({
       success: false,
       message:
         process.env.NODE_ENV === "production"
           ? "Internal server error"
-          : error.message,
+          : error.message || aggMessages || "Internal server error",
     });
   });
 
